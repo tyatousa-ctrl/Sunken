@@ -245,6 +245,7 @@ export class IntroStage implements Stage {
     this.updateHelm(dt, elapsed)
     this.updatePolly(dt, elapsed)
     this.crewBoard.update(dt, game.hands, game.bots.members(), game.net?.sessionId ?? 'me')
+    this.crewBoard.setCode(game.net?.code ?? '')
     this.updateDrunk(dt)
     this.crew.update(dt, elapsed)
     this.ship.update(elapsed)

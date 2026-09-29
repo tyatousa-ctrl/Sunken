@@ -20,6 +20,10 @@ const BLURB: Record<CharacterClass, string> = {
 export class CrewBoard {
   private readonly plaques: { mesh: THREE.Mesh; canvas: HTMLCanvasElement; texture: THREE.CanvasTexture; cls: CharacterClass; drawn: string }[] = []
   private cooldown = 0
+  /** A sign under the plaques with the crew's room code, for reading out to friends joining. */
+  private readonly codeCanvas = document.createElement('canvas')
+  private readonly codeTexture: THREE.CanvasTexture
+  private codeDrawn: string | null = null
   private readonly v = new THREE.Vector3()
 
   constructor(
@@ -53,7 +57,47 @@ export class CrewBoard {
       board.add(mesh)
       this.plaques.push({ mesh, canvas, texture, cls, drawn: '' })
     })
+    this.codeCanvas.width = 512
+    this.codeCanvas.height = 128
+    this.codeTexture = new THREE.CanvasTexture(this.codeCanvas)
+    this.codeTexture.colorSpace = THREE.SRGBColorSpace
+    const codeSign = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.225), new THREE.MeshStandardMaterial({ map: this.codeTexture, roughness: 0.9 }))
+    codeSign.position.set(0, 0.86, 0.03)
+    const codeBack = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.27, 0.04), wood)
+    codeBack.position.set(0, 0.86, 0)
+    board.add(codeBack, codeSign)
+    this.drawCode('')
     ship.shake.add(board)
+  }
+
+  /** Show the crew's room code ('' when playing solo). */
+  setCode(code: string): void {
+    if (code !== this.codeDrawn) this.drawCode(code)
+  }
+
+  private drawCode(code: string): void {
+    this.codeDrawn = code
+    const ctx = this.codeCanvas.getContext('2d')!
+    ctx.fillStyle = '#e8dcc0'
+    ctx.fillRect(0, 0, 512, 128)
+    ctx.strokeStyle = '#6b4527'
+    ctx.lineWidth = 8
+    ctx.strokeRect(4, 4, 504, 120)
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#3b2413'
+    if (code) {
+      ctx.font = 'bold 26px Georgia, serif'
+      ctx.fillText('CREW CODE (friends join with it)', 256, 40)
+      ctx.font = 'bold 64px monospace'
+      ctx.fillStyle = '#8a1c12'
+      ctx.fillText(code.toUpperCase().split('').join(' '), 256, 106)
+    } else {
+      ctx.font = 'bold 30px Georgia, serif'
+      ctx.fillText('Playing solo', 256, 56)
+      ctx.font = '22px Georgia, serif'
+      ctx.fillText('Create a crew on the start screen to get a code', 256, 94)
+    }
+    this.codeTexture.needsUpdate = true
   }
 
   update(dt: number, hands: Hand[], members: CrewMember[], meId: string): void {
