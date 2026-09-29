@@ -213,7 +213,7 @@ export class DartBoardArea {
       i === step ? { text: `▶ ${text}`, color: '#ffd27a', size: 29, bold: true } : { text, size: 26, color: '#d9e2e6' }
     this.sign.set([
       { text: 'Darts', size: 44, bold: true, color: '#f2b64a' },
-      line(0, '1. Grip a dart from this rack'),
+      line(0, '1. Grip a dart (or point at one and grip)'),
       line(1, '2. Stand behind the white line'),
       line(2, '3. Aim, swing your arm forward and let go of grip to throw'),
       { text: 'Blue button: game  ·  Red button: double out (touch them)', size: 22, color: '#9fb2bb' },

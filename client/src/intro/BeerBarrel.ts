@@ -122,7 +122,7 @@ export class BeerBarrel {
       i === step ? { text: `▶ ${text}`, color: '#ffd27a', size: 30, bold: true } : { text, size: 27, color: '#d9e2e6' }
     this.sign.set([
       { text: 'Grog', size: 44, bold: true, color: '#f2b64a' },
-      line(0, '1. Grip a mug from the table'),
+      line(0, '1. Grip a mug (or point at one and grip)'),
       line(1, '2. Hold it under the brass tap and pull the trigger to fill'),
       line(2, '3. Raise it to your mouth and tip it back to drink'),
     ])

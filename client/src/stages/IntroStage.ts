@@ -143,8 +143,8 @@ export class IntroStage implements Stage {
 
   guide(): ButtonGuide {
     return {
-      left: ['Stick: walk', 'X: jump', 'Grip: grab / hold', 'Trigger: fire · pour'],
-      right: ['Stick: turn', 'A: jump', 'Grip: grab / hold', 'Trigger: fire · pour'],
+      left: ['Stick: walk', 'X: jump', 'Grip: grab (point: pull)', 'Trigger: fire · pour'],
+      right: ['Stick: turn', 'A: jump', 'Grip: grab (point: pull)', 'Trigger: fire · pour'],
       desktop: ['<b>Deck</b>', 'Drag: look · WASD: walk · Space: jump', 'E: grab / drop · F: trigger · R: reload'],
     }
   }
