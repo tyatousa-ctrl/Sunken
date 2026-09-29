@@ -35,14 +35,14 @@ interface Obstacle {
   r: number
 }
 
-/** Deck obstacles (ship-local circles): masts, table, gear rack, thrower, beer barrel, dart rack. */
+/** Deck obstacles (ship-local circles): masts, table, gear rack, thrower, beer table, dart rack. */
 const OBSTACLES: Obstacle[] = [
   { x: 0, z: 0, r: 0.45 },
   { x: 0, z: -8, r: 0.45 },
   { x: TABLE_POSITION.x, z: TABLE_POSITION.z, r: 0.75 },
   { x: -(halfWidthAt(1.6) - 0.45), z: 1.6, r: 0.5 },
   { x: halfWidthAt(6.2) - 0.5, z: 6.2, r: 0.45 },
-  { x: BARREL_POSITION.x, z: BARREL_POSITION.z, r: 0.45 },
+  { x: BARREL_POSITION.x, z: BARREL_POSITION.z, r: 0.6 },
   { x: -2.35, z: BOARD_POSITION.z - THROW_DISTANCE - 0.1, r: 0.15 },
   { x: CREW_BOARD_SPOT.x, z: CREW_BOARD_SPOT.z, r: 0.35 },
 ]

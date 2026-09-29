@@ -15,7 +15,9 @@ const MOUTH_DISTANCE = 0.15
 const HIGHLIGHT = new THREE.Color(0x2e7896)
 const BLACK = new THREE.Color(0x000000)
 
-export const BARREL_POSITION = new THREE.Vector3(-(halfWidthAt(8.3) - 0.55), DECK_Y, 8.3)
+export const BARREL_POSITION = new THREE.Vector3(-(halfWidthAt(8.3) - 0.6), DECK_Y, 8.3)
+/** The table the barrel sits on (station-local: width along the ship, depth across it). */
+const TABLE = { width: 1.0, depth: 0.6, height: 0.78 }
 
 export interface BeerContext {
   audio: AudioSystem
@@ -25,8 +27,8 @@ export interface BeerContext {
   onDrink: (amount: number, hand: Hand) => void
 }
 
-// A beer barrel with a brass tap and a stack of pewter mugs. Hold a mug under the tap and pull the
-// trigger to fill it (foam rises); raise it to your mouth and tilt to drink.
+// A beer barrel with a brass tap, on a table with pewter mugs. Hold a mug under the tap and pull
+// the trigger to fill it (foam rises); raise it to your mouth and tilt to drink.
 export class BeerBarrel {
   readonly mugs: Mug[] = []
   readonly spout = new THREE.Object3D()
@@ -34,41 +36,74 @@ export class BeerBarrel {
   private readonly sign = new Label({ width: 0.8, canvasWidth: 640, canvasHeight: 440, billboard: true })
 
   constructor(ship: Galleon, grab: GrabSystem, ctx: BeerContext) {
-    const barrel = new THREE.Group()
-    barrel.position.copy(BARREL_POSITION)
-    // Face the tap toward the middle of the deck.
-    barrel.rotation.y = Math.PI / 2
+    // A small tavern table by the rail. The barrel lies on its side in a cradle on the table, tap
+    // end over the table's inboard edge (so a mug fits under it); the mugs stand beside it.
+    const station = new THREE.Group()
+    station.position.copy(BARREL_POSITION)
+    // Local +z faces the middle of the deck; local x runs along the ship.
+    station.rotation.y = Math.PI / 2
     const oak = new THREE.MeshStandardMaterial({ color: 0x7a4a24, roughness: 0.8 })
+    const plank = new THREE.MeshStandardMaterial({ color: 0x5a3a20, roughness: 0.85 })
     const iron = new THREE.MeshStandardMaterial({ color: 0x2c2c2e, roughness: 0.5, metalness: 0.6 })
     const brass = new THREE.MeshStandardMaterial({ color: 0xc59a3c, roughness: 0.35, metalness: 0.7 })
-    const profile = [
-      [0.0, 0.0], [0.3, 0.0], [0.34, 0.25], [0.36, 0.45], [0.34, 0.65], [0.3, 0.9], [0.0, 0.9],
-    ].map(([r, y]) => new THREE.Vector2(r, y))
-    barrel.add(new THREE.Mesh(new THREE.LatheGeometry(profile, 18), oak))
-    for (const y of [0.1, 0.8]) {
-      const hoop = new THREE.Mesh(new THREE.TorusGeometry(y === 0.1 ? 0.315 : 0.305, 0.012, 6, 24), iron)
-      hoop.rotation.x = Math.PI / 2
-      hoop.position.y = y
-      barrel.add(hoop)
+
+    const top = new THREE.Mesh(new THREE.BoxGeometry(TABLE.width, 0.05, TABLE.depth), plank)
+    top.position.y = TABLE.height - 0.025
+    station.add(top)
+    for (const x of [-1, 1]) {
+      for (const z of [-1, 1]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, TABLE.height - 0.05, 0.06), plank)
+        leg.position.set(x * (TABLE.width / 2 - 0.06), (TABLE.height - 0.05) / 2, z * (TABLE.depth / 2 - 0.06))
+        station.add(leg)
+      }
     }
+
+    // Barrel on its side, axis across the table (local z), on two chocks.
+    const R = 0.26
+    const LENGTH = 0.66
+    const cx = -0.24
+    const cy = TABLE.height + 0.03 + R
+    for (const z of [-0.18, 0.18]) {
+      const chock = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.06), plank)
+      chock.position.set(cx, TABLE.height + 0.04, z)
+      station.add(chock)
+    }
+    const body = new THREE.Group()
+    body.position.set(cx, cy, -LENGTH / 2)
+    body.rotation.x = Math.PI / 2
+    const profile = [
+      [0.0, 0.0], [0.87, 0.0], [0.94, 0.25], [1.0, 0.5], [0.94, 0.75], [0.87, 1.0], [0.0, 1.0],
+    ].map(([r, y]) => new THREE.Vector2(r * R, y * LENGTH))
+    body.add(new THREE.Mesh(new THREE.LatheGeometry(profile, 18), oak))
+    for (const y of [0.1, 0.9]) {
+      const hoop = new THREE.Mesh(new THREE.TorusGeometry(R * 0.9, 0.01, 6, 24), iron)
+      hoop.rotation.x = Math.PI / 2
+      hoop.position.y = y * LENGTH
+      body.add(hoop)
+    }
+    station.add(body)
+
+    // Tap low on the inboard end, sticking out past the table edge.
+    const endZ = LENGTH / 2
+    const tapY = cy - R * 0.55
     const tap = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.14, 8), brass)
     tap.rotation.x = Math.PI / 2
-    tap.position.set(0, 0.5, 0.41)
+    tap.position.set(cx, tapY, endZ + 0.07)
     const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.014, 0.06, 8), brass)
-    nozzle.position.set(0, 0.47, 0.47)
+    nozzle.position.set(cx, tapY - 0.03, endZ + 0.13)
     const handle = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.08, 0.02), new THREE.MeshStandardMaterial({ color: 0x1d1d1d }))
-    handle.position.set(0, 0.56, 0.45)
-    barrel.add(tap, nozzle, handle)
-    this.spout.position.set(0, 0.44, 0.47)
-    barrel.add(this.spout)
-    ship.shake.add(barrel)
-    this.sign.mesh.position.set(0, 1.75, 0.1)
-    barrel.add(this.sign.mesh)
+    handle.position.set(cx, tapY + 0.06, endZ + 0.11)
+    station.add(tap, nozzle, handle)
+    this.spout.position.set(cx, tapY - 0.06, endZ + 0.13)
+    station.add(this.spout)
+    ship.shake.add(station)
+    this.sign.mesh.position.set(0, 1.85, 0)
+    station.add(this.sign.mesh)
 
-    // Four mugs stand on the barrel head, one per player.
-    const slots: [number, number][] = [[-0.12, -0.1], [0.12, -0.1], [-0.12, 0.12], [0.12, 0.12]]
+    // Four mugs stand on the table beside the barrel, one per player.
+    const slots: [number, number][] = [[0.14, -0.12], [0.34, -0.12], [0.14, 0.12], [0.34, 0.12]]
     for (const [x, z] of slots) {
-      const mug = new Mug(barrel, new THREE.Vector3(x, 0.9, z), this.spout, ctx)
+      const mug = new Mug(station, new THREE.Vector3(x, TABLE.height, z), this.spout, ctx)
       this.mugs.push(grab.add(mug))
     }
     this.updateSign()
@@ -87,7 +122,7 @@ export class BeerBarrel {
       i === step ? { text: `▶ ${text}`, color: '#ffd27a', size: 30, bold: true } : { text, size: 27, color: '#d9e2e6' }
     this.sign.set([
       { text: 'Grog', size: 44, bold: true, color: '#f2b64a' },
-      line(0, '1. Grip a mug from the barrel top'),
+      line(0, '1. Grip a mug from the table'),
       line(1, '2. Hold it under the brass tap and pull the trigger to fill'),
       line(2, '3. Raise it to your mouth and tip it back to drink'),
     ])

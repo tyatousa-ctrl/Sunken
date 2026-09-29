@@ -191,6 +191,7 @@ From the first Quest playtest on Render:
 - **Quieter background sound.** The sea and underwater beds are about a third as loud and much softer (lower filter), and the jet hiss is halved. A **Background sound** slider on the start screen goes from silent to that level (default halfway).
 - **Button guide.** Raise a controller and turn it toward your face: a card over it lists what its buttons do right now (deck, dive, sandbox). It hides while that hand holds something, and can be turned off on the start screen ("Button guide on controller"). On desktop the keys are listed in the bottom-left corner.
 - **Backpack.** On arriving in Level 1 you're told "press A or X (or reach over your shoulder and grip) to open it".
+- **Beer table.** The barrel now lies on its side in a cradle on a small table by the rail, with the brass tap over the table's edge (about 0.9 m up, so you fill standing) and the four mugs on the tabletop beside it.
 - **Beer.** A "Grog" sign floats over the barrel with the three steps (grip a mug, fill under the tap with the trigger, raise and tip to drink); the step you're on lights up.
 - **Darts.** A sign over the dart rack: grip a dart, stand behind the white line, swing and let go; which button does what. The step you're on lights up.
 - **Blunderbuss ammo.** A small display over the breech shows the shells loaded (●● 2 shells). At zero it says "Flick down to open" (or A/X, or R on desktop); open, it says "Flick up to load".
