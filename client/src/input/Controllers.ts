@@ -18,7 +18,8 @@ export class Controllers {
 
     for (let i = 0; i < 2; i++) {
       const ray = renderer.xr.getController(i)
-      ray.add(makePointer())
+      const pointer = makePointer()
+      ray.add(pointer)
       rig.add(ray)
 
       const grip = renderer.xr.getControllerGrip(i)
@@ -30,6 +31,7 @@ export class Controllers {
       rig.add(handModel)
 
       const hand = new Hand(grip, ray)
+      hand.pointer = pointer
       this.hands.push(hand)
       grip.addEventListener('connected', (event) => {
         hand.source = event.data

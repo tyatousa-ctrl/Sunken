@@ -188,18 +188,20 @@ export class CaptainsCabin {
 
 /** The figurehead as something a hand can try (and fail) to pick up: too heavy without the skill. */
 export class TooHeavy implements Interactable {
+  /** Never flies to your hand: it's the Strongman's job to move her. */
+  readonly pullable = false
   onTry: (hand: Hand) => void = () => {}
   private readonly v = new THREE.Vector3()
 
   constructor(
-    private readonly object: THREE.Object3D,
+    private readonly body: THREE.Object3D,
     private readonly radius: number,
     private readonly isMovable: () => boolean,
   ) {}
 
   grabGap(point: THREE.Vector3): number {
     if (!this.isMovable()) return Infinity
-    return point.distanceTo(this.object.getWorldPosition(this.v)) - this.radius
+    return point.distanceTo(this.body.getWorldPosition(this.v)) - this.radius
   }
 
   grab(hand: Hand): void {

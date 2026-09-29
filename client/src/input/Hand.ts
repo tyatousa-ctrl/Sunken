@@ -47,6 +47,8 @@ export class Hand {
   virtual: VirtualPad | null = null
   /** World point this hand is holding on to (a rock ledge), if any. */
   anchor: THREE.Vector3 | null = null
+  /** The short pointer line on the controller (it stretches to whatever you can pull). */
+  pointer: THREE.Line | null = null
 
   private readonly prevLocal = new THREE.Vector3()
   private hasPrev = false
