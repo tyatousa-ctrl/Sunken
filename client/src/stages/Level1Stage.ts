@@ -650,7 +650,6 @@ export class Level1Stage implements Stage {
     // Bots add to the team score; their finds don't go into your backpack.
     if (this.game.net) this.game.net.send('collect', { id: c.id, points, as: botId })
     else this.game.party.score += points
-    this.game.audio.play('pop', c.item.object.getWorldPosition(this.v), 0.4)
   }
 
   private finishLevel(): void {
@@ -735,7 +734,6 @@ export class Level1Stage implements Stage {
   private gain(kind: ItemKind, item: LooseItem): void {
     const { game } = this
     game.party.inventory.add(kind)
-    game.audio.play('pop', item.object.getWorldPosition(this.v), 0.8)
     this.backpack.refresh()
     if (kind === 'coin') this.teach('coin', 'Coins and gems go straight into your backpack. Press A or X to look inside.')
     if (kind === 'gem') game.hud.now('A secret gem! +50', 3)

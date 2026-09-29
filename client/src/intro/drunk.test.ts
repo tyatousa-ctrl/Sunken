@@ -42,7 +42,7 @@ describe('drunk state', () => {
     assert.equal(s.passedOut, false)
   })
 
-  it('wears off by about one drink every 45 s', () => {
+  it('wears off by about one drink every 90 s', () => {
     const s = new DrunkState()
     s.drink(3)
     s.update(SOBER_SECONDS_PER_DRINK)

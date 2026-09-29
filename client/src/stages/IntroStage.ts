@@ -600,7 +600,24 @@ export class IntroStage implements Stage {
   // ---- Beer ------------------------------------------------------------------------------------
 
   private onDrink(amount: number): void {
-    if (this.drunk.drink(amount) === 'blackout') this.passOut()
+    const before = Math.floor(this.drunk.drinks)
+    if (this.drunk.drink(amount) === 'blackout') return this.passOut()
+    const after = Math.floor(this.drunk.drinks)
+    if (after > before) this.drinkRemark(after)
+  }
+
+  /** A word from the crew (or your own head) as each mug goes down. */
+  private drinkRemark(drinks: number): void {
+    const lines: Record<number, [string, string?]> = {
+      1: ['Salute! Good grog, eh?', 'Salvo'],
+      2: ['A warm glow spreads through you.'],
+      3: ["Steady there, the deck's not moving. Much.", 'Rosalia'],
+      5: ['Hic!'],
+      7: ['Everything is golden and a bit swimmy.'],
+      8: ['Easy, friend. One or two more and you are under the table!', 'Salvo'],
+    }
+    const line = lines[drinks]
+    if (line) this.game.hud.say(line[0], 3, line[1])
   }
 
   private passOut(): void {

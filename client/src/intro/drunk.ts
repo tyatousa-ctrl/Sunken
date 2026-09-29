@@ -3,8 +3,8 @@
 
 export const BLACKOUT_DRINKS = 10
 export const BLACKOUT_SECONDS = 3
-/** Effects wear off by about one drink every 45 s. */
-export const SOBER_SECONDS_PER_DRINK = 45
+/** Effects wear off by about one drink every 90 s. */
+export const SOBER_SECONDS_PER_DRINK = 90
 
 export interface DrunkEffects {
   /** Multiplies the fog distance (1 = clear, smaller = foggier). */
@@ -23,11 +23,13 @@ export interface DrunkEffects {
 
 type Curve = [drinks: number, value: number][]
 
-const FOG: Curve = [[0, 1], [1, 0.5], [3, 0.35], [4, 0.12], [6, 0.08], [7, 0.03], [9, 0.02]]
-const TINT: Curve = [[0, 0], [1, 0.05], [3, 0.1], [4, 0.15], [6, 0.2], [7, 0.28], [9, 0.35]]
-const DRIFT: Curve = [[0, 0], [3.99, 0], [4, 0.2], [6, 0.3], [7, 0.45], [9, 0.6]]
-const SPEED: Curve = [[0, 1], [6.99, 1], [7, 0.75], [9, 0.65]]
-const SWAY: Curve = [[0, 0], [6.99, 0], [7, 0.03], [9, 0.06]]
+// Noticeable from the first mug (haze and a swimmy glow), wobbly legs from the third, unsteady aim
+// and slow feet after that. None of it ever moves the camera.
+const FOG: Curve = [[0, 1], [0.5, 0.45], [1, 0.25], [3, 0.1], [5, 0.05], [7, 0.03], [9, 0.02]]
+const TINT: Curve = [[0, 0], [0.5, 0.22], [1, 0.34], [3, 0.46], [5, 0.56], [7, 0.64], [9, 0.72]]
+const DRIFT: Curve = [[0, 0], [2, 0], [3, 0.18], [5, 0.3], [7, 0.45], [9, 0.6]]
+const SPEED: Curve = [[0, 1], [5.99, 1], [7, 0.75], [9, 0.65]]
+const SWAY: Curve = [[0, 0], [2.99, 0], [3, 0.015], [5, 0.03], [7, 0.045], [9, 0.06]]
 
 function sample(curve: Curve, x: number): number {
   if (x <= curve[0][0]) return curve[0][1]

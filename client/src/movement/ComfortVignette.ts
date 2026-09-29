@@ -46,10 +46,13 @@ export class ComfortVignette {
           float oval = length(vec2(d.x * 0.85, d.y * 1.25)) / max(-d.z, 0.05);
           float mask = smoothstep(1.25, 1.7, oval) * 0.9 * uMask;
           float dark = max(max(edge, uFade), mask);
-          // Drunk haze: amber, heavier at the edges, slowly breathing.
-          float haze = uDrunk * (0.35 + 0.65 * smoothstep(0.2, 1.2, angle)) * (0.85 + 0.15 * sin(uTime * 1.3));
+          // Drunk haze: amber, heavier at the edges, slowly breathing, with soft blotches swirling
+          // round the edge of view (colour only: the view itself never moves).
+          float around = atan(d.y, d.x);
+          float swirl = 0.75 + 0.25 * sin(around * 3.0 + uTime * 0.9) * sin(angle * 5.0 - uTime * 0.7);
+          float haze = uDrunk * (0.4 + 0.6 * smoothstep(0.1, 0.9, angle)) * (0.8 + 0.2 * sin(uTime * 1.3)) * swirl;
           float alpha = 1.0 - (1.0 - dark) * (1.0 - haze);
-          vec3 color = mix(vec3(0.55, 0.33, 0.08), vec3(0.0, 0.02, 0.04), dark / max(dark + haze, 1e-3));
+          vec3 color = mix(vec3(0.72, 0.36, 0.12), vec3(0.0, 0.02, 0.04), dark / max(dark + haze, 1e-3));
           gl_FragColor = vec4(color, alpha);
         }`,
       transparent: true,

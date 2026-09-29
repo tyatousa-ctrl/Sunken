@@ -87,7 +87,6 @@ export class Backpack implements Interactable {
     this.panel.lookAt(this.head)
     this.panel.visible = true
     this.redraw()
-    this.ctx.audio.play('pop', this.panel.position, 0.6)
     hand.pulse(0.2, 25)
   }
 
@@ -125,7 +124,6 @@ export class Backpack implements Interactable {
     list.push(item)
     this.stored.set(kind, list)
     hand.pulse(0.3, 30)
-    this.ctx.audio.play('pop', undefined, 0.7)
     this.redraw()
     this.ctx.onChange()
     return true
