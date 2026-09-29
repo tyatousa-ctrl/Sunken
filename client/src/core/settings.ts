@@ -1,10 +1,15 @@
+import type { VignetteStrength } from '../movement/ComfortVignette'
+import type { TurnMode } from '../movement/Player'
+
 // Per-device settings, persisted in localStorage. Storage can throw (private mode), so every access is guarded.
 export interface Settings {
   showFps: boolean
+  vignette: VignetteStrength
+  turn: TurnMode
 }
 
 const KEY = 'sunken-sicily.settings'
-const DEFAULTS: Settings = { showFps: true }
+const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap' }
 
 export function loadSettings(): Settings {
   try {

@@ -1,17 +1,20 @@
 import * as THREE from 'three'
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js'
 import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js'
+import { assetUrl } from '../assets/manifest'
+import { Hand } from './Hand'
 
-// Shows both Quest Touch controllers (or tracked hands) with a short pointer ray.
-// Controller meshes come from the WebXR Input Profiles registry (MIT), fetched at runtime by three.js.
+// Shows both Quest Touch controllers (or tracked hands) with a short pointer ray, and exposes them as Hands.
+// Controller and hand meshes are the WebXR Input Profiles models (MIT), bundled under client/public/xr-profiles.
 export class Controllers {
-  readonly leftGrip: THREE.Group
-  readonly rightGrip: THREE.Group
+  readonly hands: Hand[] = []
+  /** Follow whichever grip is currently the left / right controller (index order isn't guaranteed). */
+  readonly leftGrip = new THREE.Group()
+  readonly rightGrip = new THREE.Group()
 
   constructor(renderer: THREE.WebGLRenderer, rig: THREE.Group) {
-    const modelFactory = new XRControllerModelFactory()
-    const handFactory = new XRHandModelFactory()
-    const grips: THREE.XRGripSpace[] = []
+    const modelFactory = new XRControllerModelFactory().setPath(assetUrl('xr-profiles'))
+    const handFactory = new XRHandModelFactory().setPath(assetUrl('xr-profile/generic-hand'))
 
     for (let i = 0; i < 2; i++) {
       const ray = renderer.xr.getController(i)
@@ -21,22 +24,34 @@ export class Controllers {
       const grip = renderer.xr.getControllerGrip(i)
       grip.add(modelFactory.createControllerModel(grip))
       rig.add(grip)
-      grips.push(grip)
 
-      const hand = renderer.xr.getHand(i)
-      hand.add(handFactory.createHandModel(hand, 'mesh'))
-      rig.add(hand)
-    }
+      const handModel = renderer.xr.getHand(i)
+      handModel.add(handFactory.createHandModel(handModel, 'mesh'))
+      rig.add(handModel)
 
-    // Controller index order is not guaranteed, so assign handedness once the input source connects.
-    this.leftGrip = new THREE.Group()
-    this.rightGrip = new THREE.Group()
-    grips.forEach((grip) => {
+      const hand = new Hand(grip, ray)
+      this.hands.push(hand)
       grip.addEventListener('connected', (event) => {
-        const target = event.data.handedness === 'left' ? this.leftGrip : this.rightGrip
-        grip.add(target)
+        hand.source = event.data
+        hand.handedness = event.data.handedness
+        grip.add(hand.handedness === 'left' ? this.leftGrip : this.rightGrip)
       })
-    })
+      grip.addEventListener('disconnected', () => {
+        hand.source = null
+      })
+    }
+  }
+
+  get left(): Hand | undefined {
+    return this.hands.find((h) => h.connected && h.handedness === 'left')
+  }
+
+  get right(): Hand | undefined {
+    return this.hands.find((h) => h.connected && h.handedness === 'right')
+  }
+
+  update(dt: number): void {
+    for (const hand of this.hands) hand.update(dt)
   }
 }
 

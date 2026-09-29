@@ -1,9 +1,18 @@
 :root { color-scheme: dark; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #03203a; font-family: system-ui, sans-serif; color: #e8f4ff; }
-#app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-#intro { position: fixed; top: 16px; left: 16px; right: 16px; max-width: 420px; padding: 16px 20px; border-radius: 12px; background: rgba(2, 20, 38, 0.72); backdrop-filter: blur(6px); }
+#app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#intro { position: fixed; top: 16px; left: 16px; right: 16px; max-width: 420px; max-height: calc(100% - 100px); overflow: auto; box-sizing: border-box; padding: 16px 20px; border-radius: 12px; background: rgba(2, 20, 38, 0.72); backdrop-filter: blur(6px); }
 #intro h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: 0.02em; }
-#intro p { margin: 4px 0 10px; opacity: 0.85; }
-#intro .hint { font-size: 14px; opacity: 0.7; margin-bottom: 0; }
-#intro label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
-.fps-dom { position: fixed; right: 12px; top: 12px; padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,0.55); font: 600 13px/1.3 ui-monospace, monospace; pointer-events: none; }
+#intro p { margin: 4px 0 12px; opacity: 0.85; }
+#intro .options { display: grid; gap: 8px; margin-bottom: 10px; }
+#intro label { display: flex; gap: 8px; align-items: center; justify-content: space-between; cursor: pointer; }
+#intro label:first-child { justify-content: flex-start; }
+#intro select { background: #0b2c45; color: inherit; border: 1px solid #2d6f8c; border-radius: 6px; padding: 4px 6px; font: inherit; }
+#intro details { font-size: 14px; opacity: 0.85; }
+#intro summary { cursor: pointer; }
+#intro ul { padding-left: 18px; margin: 8px 0 0; }
+#intro li { margin-bottom: 4px; }
+.fps-dom, .dive-dom { position: fixed; right: 12px; padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,0.55); font: 600 13px/1.3 ui-monospace, monospace; pointer-events: none; }
+.fps-dom { top: 12px; }
+.dive-dom { top: 40px; }
+.dive-dom.low { color: #ffb347; }

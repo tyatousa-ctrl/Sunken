@@ -4,11 +4,14 @@ Generated from `client/src/assets/manifest.json`. Shown in-game on the Credits s
 
 ## Assets
 
-No downloaded assets yet. Milestone 1 uses only geometry built in code.
+| Asset | Author | License | Source |
+|---|---|---|---|
+| Quest controller models (Touch Plus, Touch Plus v2, Touch Pro, Touch v3) and generic hand model | Amazon and the WebXR Input Profiles contributors | MIT | [webxr-input-profiles](https://github.com/immersive-web/webxr-input-profiles), bundled in `client/public/xr-profiles` |
+
+Everything else in the scene is built in code.
 
 ## Libraries and runtime resources
 
 | Resource | Author | License | Use |
 |---|---|---|---|
 | [three.js](https://threejs.org) | three.js authors | MIT | 3D engine and WebXR |
-| [WebXR Input Profiles](https://github.com/immersive-web/webxr-input-profiles) | Immersive Web Working Group | MIT | Quest Touch controller models, fetched at runtime from cdn.jsdelivr.net by three.js |

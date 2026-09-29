@@ -1,4 +1,60 @@
 {
-  "$comment": "Every shipped asset must be listed here with its license. Fields: id, url (Macaly media URL), source, author, license, triangles, bytes. CREDITS.md is generated from this file.",
-  "assets": []
+  "$comment": "Every shipped asset must be listed here with its license. Fields: id, url (Macaly media URL, or a path under client/public for bundled files), source, author, license, triangles, bytes. CREDITS.md is generated from this file.",
+  "assets": [
+    {
+      "id": "xr-profiles",
+      "url": "/xr-profiles",
+      "source": "https://github.com/immersive-web/webxr-input-profiles",
+      "author": "Amazon and the WebXR Input Profiles contributors",
+      "license": "MIT",
+      "triangles": null,
+      "bytes": null,
+      "note": "Base path for the controller and hand model profiles below; three.js resolves profile.json and left/right.glb under it."
+    },
+    {
+      "id": "xr-profile/meta-quest-touch-plus",
+      "url": "/xr-profiles/meta-quest-touch-plus/",
+      "source": "https://github.com/immersive-web/webxr-input-profiles (npm @webxr-input-profiles/assets 1.0.20)",
+      "author": "Amazon and the WebXR Input Profiles contributors",
+      "license": "MIT",
+      "triangles": null,
+      "bytes": 443282
+    },
+    {
+      "id": "xr-profile/meta-quest-touch-plus-v2",
+      "url": "/xr-profiles/meta-quest-touch-plus-v2/",
+      "source": "https://github.com/immersive-web/webxr-input-profiles (npm @webxr-input-profiles/assets 1.0.20)",
+      "author": "Amazon and the WebXR Input Profiles contributors",
+      "license": "MIT",
+      "triangles": null,
+      "bytes": 1622404
+    },
+    {
+      "id": "xr-profile/meta-quest-touch-pro",
+      "url": "/xr-profiles/meta-quest-touch-pro/",
+      "source": "https://github.com/immersive-web/webxr-input-profiles (npm @webxr-input-profiles/assets 1.0.20)",
+      "author": "Amazon and the WebXR Input Profiles contributors",
+      "license": "MIT",
+      "triangles": null,
+      "bytes": 609375
+    },
+    {
+      "id": "xr-profile/oculus-touch-v3",
+      "url": "/xr-profiles/oculus-touch-v3/",
+      "source": "https://github.com/immersive-web/webxr-input-profiles (npm @webxr-input-profiles/assets 1.0.20)",
+      "author": "Amazon and the WebXR Input Profiles contributors",
+      "license": "MIT",
+      "triangles": null,
+      "bytes": 1343152
+    },
+    {
+      "id": "xr-profile/generic-hand",
+      "url": "/xr-profiles/generic-hand/",
+      "source": "https://github.com/immersive-web/webxr-input-profiles (npm @webxr-input-profiles/assets 1.0.20)",
+      "author": "Amazon and the WebXR Input Profiles contributors",
+      "license": "MIT",
+      "triangles": null,
+      "bytes": 190518
+    }
+  ]
 }

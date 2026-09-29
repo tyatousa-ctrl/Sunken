@@ -9,9 +9,34 @@
     <div id="app"></div>
     <div id="intro">
       <h1>Sunken Sicily</h1>
-      <p>Co-op VR scuba treasure hunt · Milestone 1 build</p>
-      <label><input type="checkbox" id="opt-fps" /> Show FPS overlay</label>
-      <p class="hint">On Quest: tap <b>Enter VR</b> below. On desktop: drag to look around.</p>
+      <p>Co-op VR scuba treasure hunt · movement sandbox</p>
+      <div class="options">
+        <label><input type="checkbox" id="opt-fps" /> Show FPS overlay</label>
+        <label>Comfort vignette
+          <select id="opt-vignette">
+            <option value="off">Off</option>
+            <option value="low">Low</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+        <label>Turning
+          <select id="opt-turn">
+            <option value="snap">Snap 30°</option>
+            <option value="smooth">Smooth</option>
+          </select>
+        </label>
+      </div>
+      <details>
+        <summary>Controls</summary>
+        <ul>
+          <li><b>Swim:</b> hold grip and pull your arms through the water</li>
+          <li><b>Bubble jets:</b> trigger shoots bubbles from that hand and pushes you the other way; both hands for a boost, opposite directions to spin</li>
+          <li><b>Left stick:</b> drift where you look · <b>right stick:</b> turn, up/down to rise and sink</li>
+          <li><b>Grab:</b> grip near an item (it glows), a rock or the sand to pull yourself along</li>
+          <li><b>Air:</b> watch your left wrist; refill in the bubbling vent or grab the yellow tank</li>
+          <li><b>Desktop:</b> drag to look, WASD drift, Q/E sink/rise, Shift jets</li>
+        </ul>
+      </details>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

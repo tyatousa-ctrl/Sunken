@@ -9,7 +9,8 @@
     "dev": "vite --config client/vite.config.ts",
     "build": "tsc -p client && vite build --config client/vite.config.ts",
     "start": "tsx server/index.ts",
-    "typecheck": "tsc -p client && tsc -p server"
+    "typecheck": "tsc -p client && tsc -p server",
+    "test": "tsx --test client/src/**/*.test.ts"
   },
   "dependencies": {
     "three": "^0.186.1",
