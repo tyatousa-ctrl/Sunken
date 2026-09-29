@@ -24,7 +24,7 @@ import { NET_OBSTACLES, Rigging } from '../intro/Rigging'
 import { DeckCannons, MATCH_CRATE } from '../intro/DeckCannons'
 import { PERCH_SPOT, Quarterdeck, STAIRS } from '../intro/Quarterdeck'
 import { Sailing, type SailState } from '../intro/Sailing'
-import { CrackerPack, Parrot } from '../intro/Parrot'
+import { CrackerPack, Parrot, type PollyState } from '../intro/Parrot'
 import { Level1Stage } from './Level1Stage'
 
 /** The "harmless merchant" anchored in the bay, ~150 m off the starboard bow. */
@@ -157,7 +157,10 @@ export class IntroStage implements Stage {
       audio: game.audio,
       crumbs: this.debris,
       ground: (x, z, below) => this.walkEnv.groundHeight(x, z, below),
-      heads: () => [game.camera.getWorldPosition(new THREE.Vector3())],
+      heads: () => [game.camera.getWorldPosition(new THREE.Vector3()), ...(game.remote?.headPositions() ?? [])],
+      otherHands: () => game.remote?.handPositions() ?? [],
+      onThrow: (at, vel, local) => game.net?.send('cracker', { at: at.toArray(), vel: vel.toArray(), local }),
+      onCatch: (id) => game.net?.send('pollyCatch', { id }),
     })
     this.grab.add(new CrackerPack(this.quarterdeck.table, this.polly, game.audio))
     this.gear = new GearRack(this.ship, this.grab, game.camera, game.audio, (hand) => this.grab.drop(hand))
@@ -213,7 +216,7 @@ export class IntroStage implements Stage {
     this.cannons.update(dt, game.camera)
     this.updateRigging()
     this.updateHelm(dt, elapsed)
-    this.polly.update(dt, elapsed, game.hands)
+    this.updatePolly(dt, elapsed)
     this.crewBoard.update(dt, game.hands, game.bots.members(), game.net?.sessionId ?? 'me')
     this.updateDrunk(dt)
     this.crew.update(dt, elapsed)
@@ -351,6 +354,12 @@ export class IntroStage implements Stage {
     })
     on<{ id: number }>('clayBroken', (msg) => this.range.shatterById(msg.id))
     on<{ i: number }>('cannon', (msg) => this.cannons.fireRemote(msg.i))
+    on<PollyState>('polly', (msg) => this.polly.applyState(msg))
+    on<{ id: number; at: number[]; vel: number[]; by: string; local: number }>('cracker', (msg) => {
+      if (msg.by === net.sessionId) this.polly.renameCracker(msg.local, msg.id)
+      else this.polly.addRemoteCracker(msg.id, new THREE.Vector3().fromArray(msg.at), new THREE.Vector3().fromArray(msg.vel))
+    })
+    on<{ id: number }>('pollyCatch', (msg) => this.polly.remoteCatch(msg.id))
     on<SailState>('sail', (msg) => {
       const holder = net.state?.claims?.get('wheel') as string | undefined
       const command = holder ? holder === net.sessionId : this.game.bots.simulating
@@ -474,6 +483,24 @@ export class IntroStage implements Stage {
         else this.startAttack('You')
         return
       }
+    }
+  }
+
+  // ---- Polly --------------------------------------------------------------------------------------
+
+  private pollyTimer = 0
+
+  /** Polly is run on one device (solo: here; in a crew: the host) and everyone else follows it. */
+  private updatePolly(dt: number, elapsed: number): void {
+    const { game } = this
+    const net = game.net
+    const runHere = !net || game.bots.simulating
+    this.polly.setAuthority(runHere)
+    this.polly.update(dt, elapsed, game.hands)
+    this.pollyTimer -= dt
+    if (net && runHere && this.pollyTimer <= 0) {
+      this.pollyTimer = 0.1
+      net.send('polly', this.polly.snapshot())
     }
   }
 

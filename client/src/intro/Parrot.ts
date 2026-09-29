@@ -14,6 +14,8 @@ const MAX_CRACKERS = 5
 type Mode = 'perched' | 'chasing' | 'fetching' | 'returning' | 'eating' | 'outbound' | 'circling'
 
 interface Cracker {
+  /** Crew-wide id (negative until the server numbers a cracker we threw). */
+  id: number
   mesh: THREE.Mesh
   velocity: THREE.Vector3
   state: 'flying' | 'resting' | 'sinking' | 'caught'
@@ -27,6 +29,28 @@ export interface ParrotContext {
   ground: (x: number, z: number, below: number) => number | null
   /** The heads of the people on deck (Polly watches the nearest). */
   heads: () => THREE.Vector3[]
+  /** Other players' hands (world), so she can be petted by anyone in the crew. */
+  otherHands?: () => THREE.Vector3[]
+  /** In a crew: this player threw a cracker (already flying here); tell the others. */
+  onThrow?: (at: THREE.Vector3, velocity: THREE.Vector3, localId: number) => void
+  /** In a crew, on the device that runs Polly: she caught cracker `id`. */
+  onCatch?: (id: number) => void
+}
+
+/** What everyone else needs to draw Polly as the device running her sees her. */
+export interface PollyState {
+  /** World position and orientation. */
+  p: number[]
+  q: number[]
+  /** Head rotation (x, y, z). */
+  h: number[]
+  /** How petted she is right now (0–1). */
+  pet: number
+  mode: string
+  /** A cracker in her beak. */
+  carried: boolean
+  /** Counts her coos, so everyone hears each one once. */
+  coo: number
 }
 
 // Polly, the ship's parrot, on her perch on the quarterdeck. Throw a cracker and she flies up,
@@ -54,6 +78,18 @@ export class Parrot {
   private readonly w = new THREE.Vector3()
   private readonly q = new THREE.Quaternion()
   private readonly beakTip: THREE.Object3D = new THREE.Object3D()
+  /**
+   * This device decides what Polly does (solo, or the crew's host). Everyone else follows the
+   * state it shares; see `snapshot` and `applyState`.
+   */
+  private authority = true
+  private coos = 0
+  private lastCoo = -1
+  private followed: PollyState | null = null
+  private localId = 0
+  /** Crackers we threw and she caught before the server numbered them. */
+  private readonly pendingCatches = new Set<number>()
+  private readonly q2 = new THREE.Quaternion()
 
   constructor(
     private readonly perch: THREE.Object3D,
@@ -134,7 +170,7 @@ export class Parrot {
 
   /** Fly out and circle something far away (the old story beat), then come home. */
   flyTo(target: THREE.Vector3): void {
-    if (this.mode !== 'perched') return
+    if (this.mode !== 'perched' || !this.authority) return
     this.target.copy(target)
     this.leavePerch()
     this.mode = 'outbound'
@@ -143,26 +179,76 @@ export class Parrot {
   /** A cracker left a hand: into the air it goes (Polly will be after it). */
   throwCracker(mesh: THREE.Mesh, velocity: THREE.Vector3): void {
     this.root.attach(mesh)
-    this.crackers.push({ mesh, velocity: velocity.clone(), state: 'flying', age: 0 })
-    while (this.crackers.length > MAX_CRACKERS) this.removeCracker(this.crackers[0])
+    const id = -++this.localId
+    this.addCracker(id, mesh, velocity)
+    this.ctx.onThrow?.(mesh.position.clone(), velocity.clone(), id)
+  }
+
+  /** Another player threw a cracker. */
+  addRemoteCracker(id: number, at: THREE.Vector3, velocity: THREE.Vector3): void {
+    const mesh = makeCracker()
+    mesh.position.copy(at)
+    this.root.add(mesh)
+    this.addCracker(id, mesh, velocity)
+  }
+
+  /** The server numbered a cracker we threw. */
+  renameCracker(localId: number, id: number): void {
+    const c = this.crackers.find((c) => c.id === localId)
+    if (c) c.id = id
+    if (this.pendingCatches.delete(localId)) this.ctx.onCatch?.(id)
+  }
+
+  /** Polly (run on another device) caught this cracker: it's gone from the air. */
+  remoteCatch(id: number): void {
+    const c = this.crackers.find((c) => c.id === id)
+    if (c) this.removeCracker(c)
+  }
+
+  /** Run Polly here (solo, or as the crew's host) or follow the state someone else shares. */
+  setAuthority(on: boolean): void {
+    if (on === this.authority) return
+    this.authority = on
+    if (!on) return
+    // Taking over: carry on from where she was last seen.
+    this.chase = null
+    if (this.group.parent !== this.perch) this.mode = 'returning'
+    else if (this.mode !== 'eating') this.mode = 'perched'
+    if (this.mode === 'eating') this.eatTimer = EAT_SECONDS / 2
+  }
+
+  /** Polly as this device runs her, for everyone else. */
+  snapshot(): PollyState {
+    const p = this.group.getWorldPosition(this.v)
+    const q = this.group.getWorldQuaternion(this.q2)
+    const r = (n: number) => Math.round(n * 1000) / 1000
+    return {
+      p: [r(p.x), r(p.y), r(p.z)],
+      q: [r(q.x), r(q.y), r(q.z), r(q.w)],
+      h: [r(this.head.rotation.x), r(this.head.rotation.y), r(this.head.rotation.z)],
+      pet: r(this.petting),
+      mode: this.mode,
+      carried: this.carried !== null,
+      coo: this.coos,
+    }
+  }
+
+  /** The device running Polly says this is how she is. */
+  applyState(state: PollyState): void {
+    if (this.authority) return
+    // The first state only syncs the coo count (no coo for coos we never heard).
+    if (!this.followed) this.lastCoo = state.coo
+    this.followed = state
   }
 
   update(dt: number, elapsed: number, hands: Hand[]): void {
     this.updateCrackers(dt)
-    const flying = this.mode !== 'perched' && this.mode !== 'eating'
-    // Wings: folded and breathing on the perch, beating in flight.
-    // Folded wings are tucked in (shorter); spread for flight.
-    for (const wing of this.wings) wing.scale.setScalar(flying ? 1 : 0.72)
-    if (flying) {
-      const flap = Math.sin(elapsed * 24)
-      this.wings[0].rotation.set(0, 0, -flap)
-      this.wings[1].rotation.set(0, 0, flap)
-    } else {
-      // Folded flat against her sides, hanging down and back, lifting a touch as she breathes.
-      const breathe = Math.sin(elapsed * 2) * 0.04
-      this.wings[0].rotation.set(0.3, 0.25, 1.62 - breathe)
-      this.wings[1].rotation.set(0.3, -0.25, -1.62 + breathe)
+    if (!this.authority) {
+      this.follow(dt, elapsed, hands)
+      this.animateWings(elapsed)
+      return
     }
+    this.animateWings(elapsed)
 
     switch (this.mode) {
       case 'perched':
@@ -199,29 +285,104 @@ export class Parrot {
     }
   }
 
+  /** Wings: folded and breathing on the perch, beating in flight. */
+  private animateWings(elapsed: number): void {
+    const flying = this.mode !== 'perched' && this.mode !== 'eating'
+    // Folded wings are tucked in (shorter); spread for flight.
+    for (const wing of this.wings) wing.scale.setScalar(flying ? 1 : 0.72)
+    if (flying) {
+      const flap = Math.sin(elapsed * 24)
+      this.wings[0].rotation.set(0, 0, -flap)
+      this.wings[1].rotation.set(0, 0, flap)
+    } else {
+      // Folded flat against her sides, hanging down and back, lifting a touch as she breathes.
+      const breathe = Math.sin(elapsed * 2) * 0.04
+      this.wings[0].rotation.set(0.3, 0.25, 1.62 - breathe)
+      this.wings[1].rotation.set(0.3, -0.25, -1.62 + breathe)
+    }
+  }
+
+  /** Someone else runs Polly: glide to where they say she is, and do what she's doing. */
+  private follow(dt: number, elapsed: number, hands: Hand[]): void {
+    const s = this.followed
+    if (!s) return
+    if (this.group.parent !== this.root) this.root.attach(this.group)
+    const k = 1 - Math.exp(-12 * dt)
+    this.group.position.lerp(this.v.fromArray(s.p), k)
+    this.group.quaternion.slerp(this.q2.fromArray(s.q), k)
+    this.head.rotation.x += (s.h[0] - this.head.rotation.x) * k
+    this.head.rotation.y += (s.h[1] - this.head.rotation.y) * k
+    this.head.rotation.z += (s.h[2] - this.head.rotation.z) * k
+    this.petting = s.pet
+    this.body.scale.setScalar(1 + 0.06 * this.petting)
+    for (const eye of this.eyes) eye.scale.y = 1 - 0.7 * this.petting
+    this.mode = s.mode as Mode
+    // The cracker in her beak.
+    if (s.carried && !this.carried) {
+      this.carried = makeCracker()
+      this.beakTip.add(this.carried)
+      this.carried.position.set(0, 0, -0.02)
+      this.carried.rotation.set(Math.PI / 2, 0, 0)
+    } else if (!s.carried && this.carried) {
+      this.carried.removeFromParent()
+      this.carried = null
+    }
+    if (this.mode === 'eating') this.crunch(dt)
+    if (s.coo !== this.lastCoo) {
+      this.lastCoo = s.coo
+      this.ctx.audio.play('coo', this.head.getWorldPosition(this.v), 0.8)
+    }
+    // Petting her yourself: the purr is in your hand, wherever Polly is run.
+    const petter = this.pettingHand(hands)
+    if (petter) this.purr(petter, dt)
+  }
+
+  private pettingHand(hands: Hand[]): Hand | undefined {
+    this.body.getWorldPosition(this.w)
+    return hands.find((h) => h.connected && !h.held && h.worldPos(this.v).distanceTo(this.w) < PET_REACH + 0.06)
+  }
+
+  private purr(hand: Hand, dt: number): void {
+    this.petPulse -= dt
+    if (this.petPulse <= 0) {
+      this.petPulse = 0.09
+      hand.pulse(0.14, 70)
+    }
+  }
+
+  private crunch(dt: number): void {
+    this.crunchTimer -= dt
+    if (this.crunchTimer <= 0) {
+      this.crunchTimer = 0.18 + Math.random() * 0.12
+      const at = this.beakTip.getWorldPosition(this.v)
+      this.ctx.audio.play('crunch', at, 0.7)
+      this.ctx.crumbs.emit({ position: at, velocity: new THREE.Vector3(0, -0.3, 0), spread: 0.5, color: 0xd9b36b, size: 0.012, life: 0.7, count: 3 })
+    }
+  }
+
   // ---- On the perch ------------------------------------------------------------------------------
 
   private idle(dt: number, elapsed: number, hands: Hand[]): void {
-    // Petting: a free hand on her head or back.
-    const petter = hands.find((h) => h.connected && !h.held && h.worldPos(this.v).distanceTo(this.body.getWorldPosition(this.w)) < PET_REACH + 0.06)
-    if (petter) {
+    // Petting: a free hand on her head or back (yours, or a crewmate's).
+    const petter = this.pettingHand(hands)
+    this.body.getWorldPosition(this.w)
+    const otherPetter = petter ? null : (this.ctx.otherHands?.().find((p) => p.distanceTo(this.w) < PET_REACH + 0.06) ?? null)
+    const petPoint = petter ? petter.worldPos(this.v).clone() : otherPetter
+    if (petPoint) {
       this.petting = Math.min(1, this.petting + dt * 4)
       // Nuzzle: head turns into the hand and rubs against it; eyes half close; feathers fluff.
-      const local = this.body.worldToLocal(petter.worldPos(this.v))
+      const local = this.body.worldToLocal(this.v.copy(petPoint))
       const yaw = Math.atan2(-local.x, -local.z)
       this.head.rotation.y += (THREE.MathUtils.clamp(yaw, -1.2, 1.2) - this.head.rotation.y) * Math.min(1, dt * 6)
       this.head.rotation.z = Math.sin(elapsed * 7) * 0.35
       this.head.rotation.x = 0.25 + Math.sin(elapsed * 3.5) * 0.1
       this.body.scale.setScalar(1 + 0.06 * this.petting)
       // A soft purr of vibration in the petting hand, and a coo now and then.
-      this.petPulse -= dt
-      if (this.petPulse <= 0) {
-        this.petPulse = 0.09
-        petter.pulse(0.14, 70)
-      }
+      if (petter) this.purr(petter, dt)
       this.cooTimer -= dt
       if (this.cooTimer <= 0) {
         this.cooTimer = 1.1 + Math.random() * 0.6
+        this.coos++
         this.ctx.audio.play('coo', this.head.getWorldPosition(this.v), 0.8)
       }
     } else {
@@ -257,13 +418,7 @@ export class Parrot {
     this.eatTimer -= dt
     this.head.rotation.x = 0.4 + Math.sin(elapsed * 14) * 0.15
     this.head.rotation.y *= 0.9
-    this.crunchTimer -= dt
-    if (this.crunchTimer <= 0) {
-      this.crunchTimer = 0.18 + Math.random() * 0.12
-      const at = this.beakTip.getWorldPosition(this.v)
-      this.ctx.audio.play('crunch', at, 0.7)
-      this.ctx.crumbs.emit({ position: at, velocity: new THREE.Vector3(0, -0.3, 0), spread: 0.5, color: 0xd9b36b, size: 0.012, life: 0.7, count: 3 })
-    }
+    this.crunch(dt)
     if (this.carried) this.carried.scale.setScalar(Math.max(0.05, this.eatTimer / EAT_SECONDS))
     if (this.eatTimer <= 0) {
       if (this.carried) {
@@ -323,6 +478,9 @@ export class Parrot {
 
   private catch(c: Cracker): void {
     c.state = 'caught'
+    // Tell the crew it's gone (once the server has numbered it, if we threw it ourselves).
+    if (c.id < 0) this.pendingCatches.add(c.id)
+    else this.ctx.onCatch?.(c.id)
     this.removeCracker(c, false)
     this.carried = c.mesh
     this.beakTip.add(c.mesh)
@@ -385,6 +543,11 @@ export class Parrot {
         if (c.age > 2) this.removeCracker(c)
       }
     }
+  }
+
+  private addCracker(id: number, mesh: THREE.Mesh, velocity: THREE.Vector3): void {
+    this.crackers.push({ id, mesh, velocity: velocity.clone(), state: 'flying', age: 0 })
+    while (this.crackers.length > MAX_CRACKERS) this.removeCracker(this.crackers[0])
   }
 
   private removeCracker(c: Cracker, dispose = true): void {

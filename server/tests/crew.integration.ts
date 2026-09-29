@@ -88,6 +88,28 @@ assert.equal(sails.length, 1)
 assert.deepEqual(sails[0], { x: 1, z: -20, heading: -0.1, speed: 2.2, wheel: 1.5 })
 console.log('sail state relayed')
 
+// Polly: crackers are numbered and reach everyone; her state and catches go to everyone else.
+const crackers: { a: any[]; b: any[] } = { a: [], b: [] }
+const pollyStates: any[] = []
+const catches: any[] = []
+alice.onMessage('cracker', (m) => crackers.a.push(m))
+bob.onMessage('cracker', (m) => crackers.b.push(m))
+bob.onMessage('polly', (m) => pollyStates.push(m))
+bob.onMessage('pollyCatch', (m) => catches.push(m))
+bob.send('cracker', { at: [0, 6, 11], vel: [0, 3, 0], local: -1 })
+alice.send('polly', { p: [0, 6, 11], q: [0, 0, 0, 1], h: [0, 0.3, 0], pet: 0.5, mode: 'perched', carried: false, coo: 3 })
+alice.send('polly', { p: [0, 6], q: [0, 0, 0, 1], h: [0, 0, 0], pet: 0, mode: 'perched', carried: false, coo: 0 })
+await wait(300)
+alice.send('pollyCatch', { id: crackers.a[0]?.id })
+await wait(300)
+assert.equal(crackers.a.length, 1)
+assert.equal(crackers.b[0].local, -1)
+assert.equal(crackers.a[0].id, crackers.b[0].id)
+assert.equal(pollyStates.length, 1, 'malformed state ignored')
+assert.equal(pollyStates[0].coo, 3)
+assert.equal(catches[0].id, crackers.a[0].id)
+console.log('Polly: crackers, state and catches relayed')
+
 // Collectibles count once.
 alice.send('collect', { id: 'coin3', points: 10 })
 bob.send('collect', { id: 'coin3', points: 10 })

@@ -214,6 +214,21 @@ export class RemotePlayers {
     return this.avatars.get(sessionId)?.head ?? null
   }
 
+  /** World positions of the hands of everyone shown here (same stage), for touching things. */
+  handPositions(): THREE.Vector3[] {
+    const out: THREE.Vector3[] = []
+    for (const avatar of this.avatars.values()) {
+      if (!avatar.group.visible) continue
+      for (const hand of avatar.hands) out.push(hand.getWorldPosition(new THREE.Vector3()))
+    }
+    return out
+  }
+
+  /** World positions of the heads of everyone shown here (same stage). */
+  headPositions(): THREE.Vector3[] {
+    return [...this.avatars.values()].filter((a) => a.group.visible).map((a) => a.head.getWorldPosition(new THREE.Vector3()))
+  }
+
   isUnderwater(sessionId: string): boolean {
     return this.avatars.get(sessionId)?.water ?? false
   }

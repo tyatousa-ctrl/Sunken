@@ -24,6 +24,7 @@ export class CrewRoom extends Room<{ state: CrewState }> {
   private readonly botPoses = new Map<string, PoseMessage>()
   private readonly level1 = new LevelProgress(LEVEL1)
   private clayId = 0
+  private crackerId = 0
   private lastPull = 0
 
   onCreate(options: { private?: boolean }): void {
@@ -109,6 +110,20 @@ export class CrewRoom extends Room<{ state: CrewState }> {
       const nums = [msg?.x, msg?.z, msg?.heading, msg?.speed, msg?.wheel]
       if (this.state.attackAt || !nums.every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) < 1e5)) return
       this.broadcast('sail', { x: msg.x, z: msg.z, heading: msg.heading, speed: msg.speed, wheel: msg.wheel }, { except: client })
+    })
+    // Polly: a thrown cracker gets a crew-wide id and reaches everyone; the device running Polly (the
+    // host) shares how she is and which cracker she caught.
+    this.onMessage('cracker', (client, msg: { at?: number[]; vel?: number[]; local?: number }) => {
+      if (!isVec3(msg?.at) || !isVec3(msg?.vel) || typeof msg.local !== 'number') return
+      this.broadcast('cracker', { id: ++this.crackerId, at: msg.at, vel: msg.vel, by: client.sessionId, local: msg.local })
+    })
+    this.onMessage('polly', (client, msg: { p?: number[]; q?: number[]; h?: number[]; pet?: number; mode?: string; carried?: boolean; coo?: number }) => {
+      if (!isVec3(msg?.p) || !Array.isArray(msg.q) || msg.q.length !== 4 || !isVec3(msg.h)) return
+      if (typeof msg.pet !== 'number' || typeof msg.mode !== 'string' || msg.mode.length > 16 || typeof msg.coo !== 'number') return
+      this.broadcast('polly', { p: msg.p, q: msg.q, h: msg.h, pet: msg.pet, mode: msg.mode, carried: !!msg.carried, coo: msg.coo }, { except: client })
+    })
+    this.onMessage('pollyCatch', (client, msg: { id?: number }) => {
+      if (typeof msg?.id === 'number') this.broadcast('pollyCatch', { id: msg.id }, { except: client })
     })
     // Someone fired a deck cannon: everyone else sees and hears it.
     this.onMessage('cannon', (client, msg: { i?: number }) => {
