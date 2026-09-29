@@ -31,6 +31,8 @@ export function swimPush(head: THREE.Vector3, env: SwimEnvironment, push: THREE.
   }
   for (const box of env.boxes) pushOutOfBox(head, box, push)
 
+  env.contain?.(v.copy(head).add(push), HEAD_CLEARANCE, push)
+
   const horizontal = Math.hypot(head.x, head.z)
   if (horizontal > env.radius) {
     push.x -= (head.x / horizontal) * (horizontal - env.radius)

@@ -27,6 +27,11 @@ export interface SwimEnvironment {
   /** Horizontal distance from the origin the diver may roam. */
   radius: number
   refillZones: RefillZone[]
+  /**
+   * Extra walls for oddly shaped water (a sea cave, a tunnel): add to `push` whatever moves a head
+   * (a sphere of the given clearance) back into the water it's allowed in.
+   */
+  contain?(head: THREE.Vector3, clearance: number, push: THREE.Vector3): void
 }
 
 /** On foot: gravity, a walkable surface, and water to fall into. */

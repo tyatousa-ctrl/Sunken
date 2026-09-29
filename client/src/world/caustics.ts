@@ -52,8 +52,20 @@ const VERTEX_CAPTURE = /* glsl */ `
 }
 `
 
+export interface CausticOptions {
+  /** Which way surfaces must face to catch the light (default: up). */
+  facing?: 'up' | 'down' | 'any'
+  /** Colour of the light (default: the surface's own colour). */
+  tint?: [number, number, number]
+}
+
 /** Adds caustics to a lit (standard) material. `strength` ~0.3–0.8. */
-export function applyCaustics(material: THREE.Material, strength = 0.55): void {
+export function applyCaustics(material: THREE.Material, strength = 0.55, options: CausticOptions = {}): void {
+  const facing = options.facing ?? 'up'
+  // Which surfaces catch the ripples: floors (light from above), ceilings (light bounced up off
+  // glowing water) or every surface.
+  const facingExpr = facing === 'up' ? 'clamp(vCausticNormal.y, 0.0, 1.0)' : facing === 'down' ? 'clamp(-vCausticNormal.y, 0.0, 1.0)' : '1.0'
+  const tint = options.tint ? `vec3(${options.tint.map((c) => c.toFixed(3)).join(', ')})` : 'diffuseColor.rgb'
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uCausticTime = causticsTime
     shader.vertexShader = shader.vertexShader
@@ -63,12 +75,12 @@ export function applyCaustics(material: THREE.Material, strength = 0.55): void {
       .replace('#include <common>', '#include <common>\n' + CAUSTIC_GLSL)
       .replace(
         '#include <opaque_fragment>',
-        `float causticFacing = clamp(vCausticNormal.y, 0.0, 1.0);
-         outgoingLight += diffuseColor.rgb * caustic(vCausticPos, uCausticTime) * causticFacing * ${strength.toFixed(2)};
+        `float causticFacing = ${facingExpr};
+         outgoingLight += ${tint} * caustic(vCausticPos, uCausticTime) * causticFacing * ${strength.toFixed(2)};
          #include <opaque_fragment>`,
       )
   }
-  material.customProgramCacheKey = () => `caustics-${strength}`
+  material.customProgramCacheKey = () => `caustics-${strength}-${facing}-${options.tint?.join(',') ?? ''}`
 }
 
 /** Shimmer for the underside of the water surface (unlit material). */

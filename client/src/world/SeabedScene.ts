@@ -41,7 +41,9 @@ export interface SeabedOptions {
   seagrassClear?: (x: number, z: number) => boolean
   /** The bubbling air vent (null: none). */
   vent?: THREE.Vector3 | null
-  /** Size of the water surface. */
+  /** Sunlight shafts slanting down from the surface (default on). */
+  godRays?: boolean
+  /** Size of the water surface (0: the level makes its own). */
   surfaceSize?: number
 }
 
@@ -86,8 +88,8 @@ export class SeabedScene {
     root.add(this.makeRocks())
     if (vent) root.add(makeVent(vent, this.height))
     root.add(this.makeSeagrass())
-    root.add(makeWaterSurface(SURFACE_Y, options.surfaceSize))
-    root.add(makeGodRays(SURFACE_Y, this.godRayTime))
+    if (options.surfaceSize !== 0) root.add(makeWaterSurface(SURFACE_Y, options.surfaceSize))
+    if (options.godRays !== false) root.add(makeGodRays(SURFACE_Y, this.godRayTime))
 
     this.particles = makeParticles()
     root.add(this.particles)

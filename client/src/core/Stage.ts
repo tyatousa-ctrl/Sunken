@@ -75,6 +75,8 @@ export interface Stage {
   exit(): void
   /** What the buttons do right now, for the controller guide. */
   guide?(): ButtonGuide | null
+  /** The stage sets its own look above and below the water (the game leaves fog and sky alone). */
+  readonly ownsWaterLook?: boolean
 }
 
 /** Free GPU resources for everything under `root`. */

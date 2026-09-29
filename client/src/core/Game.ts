@@ -217,7 +217,7 @@ export class Game implements GameContext {
   /** A diver's head out of the water sees sky and open sea (and hears waves), not the deep. */
   private updateSurfacing(): void {
     const env = this.player.env
-    const above = env?.kind === 'swim' && this.pending === null && this.camera.getWorldPosition(this.pv).y > env.surfaceY + 0.02
+    const above = env?.kind === 'swim' && this.pending === null && !this.stage?.ownsWaterLook && this.camera.getWorldPosition(this.pv).y > env.surfaceY + 0.02
     if (above && !this.underwaterLook) {
       this.underwaterLook = { fog: this.scene.fog, background: this.scene.background }
       this.scene.fog = this.airFog

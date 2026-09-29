@@ -99,6 +99,19 @@ export class Player {
     for (const hand of this.hands) hand.anchor = null
   }
 
+  /**
+   * Change between swimming and walking where you are (climbing out onto a ledge, stepping off into
+   * the water), without moving the diver.
+   */
+  switchEnvironment(env: PlayerEnvironment): void {
+    this.env = env
+    avatarGround.at = env.kind === 'swim' ? (x, z) => env.floorHeight(x, z) : (x, z, below) => env.groundHeight(x, z, below)
+    this.verticalSpeed = 0
+    this.inWater = false
+    this.climbing = false
+    for (const hand of this.hands) hand.anchor = null
+  }
+
   setTurnMode(mode: TurnMode): void {
     this.turnMode = mode
   }

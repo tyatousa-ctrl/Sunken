@@ -11,6 +11,7 @@ import { makeItem } from '../systems/items'
 import { SeabedScene } from '../world/SeabedScene'
 import { Particles } from '../fx/Particles'
 import { DiveLevel, type DiveLevelSetup } from './DiveLevel'
+import { Level3Stage } from './Level3Stage'
 import { Turtle } from '../level2/Turtle'
 import { StoneDoor } from '../level2/StoneDoor'
 import { Starfish } from '../level2/Starfish'
@@ -223,8 +224,8 @@ export class Level2Stage extends DiveLevel {
     if (this.mapPiece.visible) this.mapPiece.rotation.y += dt
   }
 
-  protected nextStage(): (() => Stage) | null {
-    return null
+  protected nextStage(): () => Stage {
+    return () => new Level3Stage(this.game)
   }
 
   protected levelInk(): string[] {

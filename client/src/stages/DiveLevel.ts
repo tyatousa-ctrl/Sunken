@@ -47,6 +47,8 @@ export interface DiveLevelSetup {
   gate: { position: THREE.Vector3; yaw: number }
   /** Where bots go to refill (the level's air vent), if anywhere. */
   botRefill: THREE.Vector3 | null
+  /** Walls for oddly shaped water (caves, tunnels); see SwimEnvironment.contain. */
+  contain?: SwimEnvironment['contain']
 }
 
 // Everything a dive level shares: swimming, the backpack and treasure map, coins, gems and runes,
@@ -171,6 +173,7 @@ export abstract class DiveLevel implements Stage {
       boxes: this.boxes,
       radius: setup.radius,
       refillZones: setup.refillZones,
+      contain: setup.contain,
     })
     this.magic = new Magic({
       root: this.root,

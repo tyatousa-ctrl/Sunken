@@ -1,0 +1,37 @@
+{
+  "id": "level3",
+  "name": "The Blue Grotto",
+  "riddle": "When noon's light swims through the door, blue shows the way the old ones swore.",
+  "steps": [
+    {
+      "id": "enterGrotto",
+      "objective": "Swim through the arch in the cliff and surface inside the grotto."
+    },
+    {
+      "id": "lightCarving",
+      "objective": "Bounce the blue light from shell to shell onto the carved wall."
+    },
+    {
+      "id": "takeMapPiece",
+      "objective": "Take what the carving revealed."
+    },
+    {
+      "id": "moveBoulder",
+      "objective": "Clear the boulder from the old ones' way out."
+    }
+  ],
+  "hints": [
+    "The door is the arch in the cliff; noon's light pours through it and makes the grotto's water glow. A beam of that light rises from the water inside: follow it.",
+    "Three polished shells stand on the rock shelves. Climb out (grip a ledge at the surface) and turn each one by its rim so the beam bounces from shell to shell, and finally onto the carved wall.",
+    "The first shell is on the east shelf, the second in the smugglers' camp at the north end, the third on the west ledge. When the carving glows, take what it reveals; then the Strongman heaves the boulder off the underwater passage at the north end."
+  ],
+  "reward": {
+    "mapPiece": 4,
+    "nextRiddle": "Three ships lie still; the one with no name holds the flame.",
+    "message": "Map piece IV! The old ones' way out leads on to the Wreck Graveyard."
+  },
+  "collectibles": {
+    "coins": 20,
+    "gems": 3
+  }
+}

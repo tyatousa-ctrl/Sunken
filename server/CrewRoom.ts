@@ -8,7 +8,7 @@ import { CrewPlayer, CrewState } from './schema.ts'
 
 /** Every level's riddle, from the same data files the game uses. */
 const LEVELS = new Map<string, LevelData>(
-  ['level1', 'level2'].map((id) => [id, JSON.parse(readFileSync(new URL(`../client/src/data/levels/${id}.json`, import.meta.url), 'utf8')) as LevelData]),
+  ['level1', 'level2', 'level3'].map((id) => [id, JSON.parse(readFileSync(new URL(`../client/src/data/levels/${id}.json`, import.meta.url), 'utf8')) as LevelData]),
 )
 const POSE_LENGTH = 21
 const PULL_COOLDOWN_MS = 1500

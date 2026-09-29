@@ -8,6 +8,7 @@ import { DiveStage } from './stages/DiveStage'
 import { IntroStage } from './stages/IntroStage'
 import { Level1Stage } from './stages/Level1Stage'
 import { Level2Stage } from './stages/Level2Stage'
+import { Level3Stage } from './stages/Level3Stage'
 import { NetClient, type JoinMode } from './net/NetClient'
 import { ATTACK_SECONDS } from './intro/attackTimeline'
 
@@ -17,11 +18,11 @@ const game = new Game(document.getElementById('app')!, settings)
 const params = new URLSearchParams(location.search)
 const startAt = params.get('stage') ?? 'intro'
 game.start(
-  startAt === 'sandbox' ? new DiveStage(game) : startAt === 'level1' ? new Level1Stage(game, false) : startAt === 'level2' ? new Level2Stage(game) : new IntroStage(game),
+  startAt === 'sandbox' ? new DiveStage(game) : startAt === 'level1' ? new Level1Stage(game, false) : startAt === 'level2' ? new Level2Stage(game) : startAt === 'level3' ? new Level3Stage(game) : new IntroStage(game),
 )
 
 const startSelect = document.getElementById('opt-start') as HTMLSelectElement
-startSelect.value = ['intro', 'level1', 'level2', 'sandbox'].includes(startAt) ? startAt : 'intro'
+startSelect.value = ['intro', 'level1', 'level2', 'level3', 'sandbox'].includes(startAt) ? startAt : 'intro'
 startSelect.addEventListener('change', () => {
   const next = new URLSearchParams(location.search)
   next.set('stage', startSelect.value)
