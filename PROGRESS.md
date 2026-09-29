@@ -11,7 +11,7 @@ Tracks milestones from `BRIEF.md`, decisions, and placeholders to replace later.
 | 3 | Intro sequence: galleon deck, clay-shooting fake-out, beer barrel, darts, cannon attack, gear up, sinking, dive transition | Built and tested end to end in an emulated Quest 3; waiting for real-headset test |
 | 4 | Level 1 + systems: backpack, map pieces, first riddle, Strongman skill, checkpoints | Built and tested end to end in an emulated Quest 3; waiting for real-headset test |
 | 5 | Multiplayer: Colyseus rooms, room codes, pose sync, shared objects, voice, reconnect | Built and tested with real clients (Node and two/three headless browsers); waiting for a multi-headset test |
-| 6 | Bots + all classes + magic | Not started |
+| 6 | Bots + all classes + magic: bot behaviour, all four skills, rune spells with gesture recognition | Built and tested (solo with 3 bots, crew with host-run bots); waiting for real-headset test |
 | 7 | Levels 2–5 + finale, polish | Not started |
 
 ## Milestone 1: what's in it
@@ -155,6 +155,35 @@ Up to four divers per crew. Solo play still works with no server at all.
 
 **Not yet**: beer, darts, loose props underwater and the backpack stay per-player for now (their state isn't shared); voice isn't slurred when drunk. Voice uses Google's public STUN server only; on some strict networks two players may not be able to connect voice without a TURN relay (a paid service, so I haven't added one).
 
+## Milestone 6: bots, the four classes, and magic
+
+**Classes** (`systems/crew.ts`, `intro/CrewBoard.ts`): a crew board by the main mast with four plaques; touch one to take that class. One of each: in a crew the server refuses a class another human has, and new arrivals get a free one. Bots take whatever's left, so every skill is always in the crew. The start screen also has a Class menu.
+
+**Skills (B)**, 20–60 s cooldowns shown on the wrist:
+- **Navigator**: a trail of glowing motes to the next clue for 15 s (routed through the cabin doorway), and hidden ink on the back of the map (where the level's secret gems are).
+- **Strongman**: heaves heavy things aside (the Level 1 figurehead).
+- **Deep Diver**: double air, always; B shares air with the nearest diver (bot or human).
+- **Fish Whisperer**: a school of bream swims out, fetches the nearest treasure within 12 m, and brings it back.
+
+**Bots** (`bots/`): every empty slot, and any dropped player's slot, has a bot diver with a name tag and robot icon. They swim with the player physics (bubble-jetting when far), have their own air, and follow a small priority list (`bots/brain.ts`): refill air when low → obey a human's order → Deep Diver shares air with anyone nearly out → do the puzzle job only their class can, but only once a human has got there → pick up nearby coins and gems while humans are around (never runes: those are mana for the humans' spells) → follow the nearest human at 2–4 m. They route through the cabin doorway, and hop up and over anything they're stuck against. On deck they walk with the crew and go over the side when the rails open.
+- **Commands**: point at a bot and pull the trigger; cards appear: *Come here*, *Go there* (then point at the spot), *Use skill*.
+- **Who runs them**: solo, all three run on your device. In a crew they run on the host (the connected human in the lowest slot) and the server relays their poses; if the host leaves, the next player takes over from where the bots were.
+- Bots never solve a riddle alone: the Strongman bot only heaves the figurehead once a human is in the cabin.
+
+**Magic** (`magic/Magic.ts`, `systems/gesture.ts`): three tide runes in Level 1 (one on deck, two on the seabed) fill the mana meter (up to 3, shown ◆◆◇ on the wrist). Press **Y**, hold the trigger, draw a shape in the air and let go; a $1 Unistroke recogniser reads it:
+- **Circle: Light Orb**, a real light that follows you for 60 s (for dark cabins and wrecks);
+- **Triangle: Air Bubble**, a dome that refills everyone inside for 20 s;
+- **Zigzag: Current**, a 25 m stream that carries divers along for 12 s.
+"Spell menu instead of drawing" (start screen) swaps drawing for three cards you touch with the other hand; desktop uses keys 1/2/3. Spells cast in a crew appear for everyone.
+
+**How it was tested**
+- `npm test`: 77 unit tests, now including crew slots (solo gets three bots with the other classes; a dropped player's bot keeps their class; hosting), the gesture recogniser (wobbly circles, tilted and reversed triangles, zigzags; rejects twitches), and the bot brain's priorities.
+- Solo with three bots, playing the Navigator: entering the cabin makes the Strongman bot swim over the deck, in through the doorway, and heave the figurehead ("Strongman bot heaves the stone maiden aside!"); all three spells cast and spend runes; the Navigator trail shows; pointing at the Deep Diver bot opens the command cards and "Come here" sets its order. Found and fixed on the way: bots' stuck-detection was far too eager (they kept hopping upwards), bots were taking the runes, and desktop key taps shorter than a frame were missed (the cause of the earlier flaky desktop reload).
+- Crew with two humans and two bots: the second player asking for a taken class gets a free one and a later duplicate request is refused; the host runs the bots and the other player sees them; when the host's tab closes, their slot becomes "Alice's bot" with her class and the other player takes over running all three bots.
+- Solo Level 1 end to end and the crew server integration test still pass.
+
+**Not yet**: bots don't shoot clays, drink or play darts on deck (they walk with you); commanding a bot's skill works for the Strongman's heave and the Deep Diver's air (the other classes' skills are for humans for now); rune-locked doors arrive with the temple level.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.
@@ -170,6 +199,8 @@ Up to four divers per crew. Solo play still works with no server at all.
 - **2026-09-29 — Colyseus 0.18 and the server.** The current Colyseus (0.18, with `@colyseus/sdk` on the client) runs inside the same Render service as the game (Express serves the built client). The room code is the room id, so joining by code is a direct lookup; crews made with "Create crew" are private and never matched by Quick Play.
 - **2026-09-29 — What's shared.** Shared facts live in the synced state (so late joiners and reconnects are right); moment-to-moment things (poses, shots, clay launches) are messages. Beer, darts and underwater loose props stay per-player for now.
 - **2026-09-29 — Voice relay.** Voice is peer-to-peer with a free public STUN server. A TURN relay would make voice work on every network but is a paid service, so it's left out until you decide.
+- **2026-09-29 — Where bots run.** The brief puts bots on the server, but the server has no copy of the level geometry to steer them through (hull, cabin doorway, rocks). They run on the host player's device instead (the connected human in the lowest slot), and the server relays their poses and accepts the host's actions on their behalf. Solo play runs them locally, so it needs no server. If the host leaves, the next player takes over.
+- **2026-09-29 — Bots at the start.** Bots fill empty slots from the moment you board, rather than waiting for a "Set Sail" press; the crew board shows who has which class.
 - **2026-09-29 — Repo layout.** One root `package.json` with `client/` (Vite root) and `server/`, so Render builds and runs everything with `npm run build` / `npm start`.
 
 ## Placeholders to replace

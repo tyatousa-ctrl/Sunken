@@ -9,6 +9,7 @@ import type { WristComputer } from '../ui/WristComputer'
 import type { Inventory } from '../systems/Inventory'
 import type { NetClient } from '../net/NetClient'
 import type { RemotePlayers } from '../net/RemotePlayers'
+import type { BotCrew } from '../bots/BotCrew'
 import type { Settings } from './settings'
 
 /** Things that last the whole run (achievements, stats), shown on the victory screen later. */
@@ -20,7 +21,8 @@ export interface RunRecord {
   bullseyeBeforeBattle: boolean
 }
 
-export type CharacterClass = 'navigator' | 'strongman' | 'deepDiver' | 'fishWhisperer'
+import type { CharacterClass } from '../systems/crew'
+export type { CharacterClass }
 
 /** The crew's shared progress: carried from stage to stage, saved at checkpoints. */
 export interface PartyState {
@@ -52,6 +54,7 @@ export interface GameContext {
   /** The crew connection, or null when playing solo. */
   net: NetClient | null
   remote: RemotePlayers | null
+  bots: BotCrew
   /** The hands in use this frame: both controllers in VR, the virtual hand on desktop. */
   readonly hands: Hand[]
   readonly inXr: boolean

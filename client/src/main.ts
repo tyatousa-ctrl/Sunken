@@ -71,6 +71,24 @@ else xr.isSessionSupported('immersive-vr').then((ok) => ok || showNoXr(), showNo
 const nameInput = document.getElementById('crew-name') as HTMLInputElement
 const codeInput = document.getElementById('crew-code') as HTMLInputElement
 const muteToggle = document.getElementById('opt-mute') as HTMLInputElement
+const classSelect = document.getElementById('opt-class') as HTMLSelectElement
+const spellMenuToggle = document.getElementById('opt-spellmenu') as HTMLInputElement
+classSelect.value = settings.character
+spellMenuToggle.checked = settings.spellMenu
+classSelect.addEventListener('change', () => {
+  settings.character = classSelect.value as typeof settings.character
+  saveSettings(settings)
+  if (game.net) game.net.send('profile', { character: settings.character })
+  else game.party.character = settings.character
+})
+spellMenuToggle.addEventListener('change', () => {
+  settings.spellMenu = spellMenuToggle.checked
+  saveSettings(settings)
+})
+// Keep the menu in step with the crew board on deck.
+setInterval(() => {
+  if (classSelect.value !== game.party.character) classSelect.value = game.party.character
+}, 1000)
 const status = document.getElementById('crew-status') as HTMLElement
 const crewButtons = ['crew-create', 'crew-quick', 'crew-join'].map((id) => document.getElementById(id) as HTMLButtonElement)
 const rejoinButton = document.getElementById('crew-rejoin') as HTMLButtonElement
@@ -94,7 +112,7 @@ async function joinCrew(mode: JoinMode): Promise<void> {
   rejoinButton.hidden = true
   status.textContent = 'Connecting...'
   try {
-    const net = await NetClient.connect(mode, settings.name || 'Diver')
+    const net = await NetClient.connect(mode, settings.name || 'Diver', settings.character)
     await game.connect(net)
     // Everyone restarts where the crew is: on deck, or in Level 1 once the ship has gone down.
     const state = net.state

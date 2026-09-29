@@ -1,15 +1,18 @@
 import * as THREE from 'three'
 import { Hand, type VirtualPad } from './Hand'
+import type { SpellShape } from '../systems/gesture'
 
 // Keyboard + mouse fallback for testing without a headset. Drag to look; WASD to walk/drift;
 // Space jumps on deck (rises underwater), Q sinks; Shift fires bubble jets.
 // A virtual right hand floats in front of the camera: F = trigger, E = grip (toggle), R = A button
-// (reload / backpack), B = B button (skill), M = thumbstick click (map).
+// (reload / backpack), B = B button (skill), M = thumbstick click (map), 1/2/3 = cast a spell.
 export class DesktopControls {
   readonly move = new THREE.Vector2()
   rise = 0
   jet = false
   jumpPressed = false
+  /** Spell cast by number key this frame (desktop has no hand to draw with). */
+  spell: SpellShape | null = null
   /** Accumulated yaw from mouse drag since the last frame (radians). */
   yawDelta = 0
   readonly hand: Hand
@@ -56,11 +59,14 @@ export class DesktopControls {
     this.jet = k.has('ShiftLeft') || k.has('ShiftRight')
     this.camera.rotation.set(this.pitch, 0, 0)
 
-    this.pad.trigger = k.has('KeyF') ? 1 : 0
+    this.pad.trigger = k.has('KeyF') || this.pressed.has('KeyF') ? 1 : 0
     if (this.pressed.has('KeyE')) this.pad.grip = this.pad.grip > 0.5 ? 0 : 1
-    this.pad.primary = k.has('KeyR')
-    this.pad.secondary = k.has('KeyB')
-    this.pad.stickClick = k.has('KeyM')
+    // Count a tap even if the key went down and up between two frames.
+    const held = (code: string) => k.has(code) || this.pressed.has(code)
+    this.pad.primary = held('KeyR')
+    this.pad.secondary = held('KeyB')
+    this.pad.stickClick = held('KeyM')
+    this.spell = this.pressed.has('Digit1') ? 'circle' : this.pressed.has('Digit2') ? 'triangle' : this.pressed.has('Digit3') ? 'zigzag' : null
     this.pressed.clear()
   }
 }

@@ -3,21 +3,39 @@
   "name": "The Sinking Galleon",
   "riddle": "Where the captain slept, the key is kept, beneath the one who never wept.",
   "steps": [
-    { "id": "enterCabin", "objective": "Find where the captain slept." },
-    { "id": "liftFigurehead", "objective": "Something heavy lies by the bunk." },
-    { "id": "takeKey", "objective": "Take the key." },
-    { "id": "openChest", "objective": "Open the captain's chest." },
-    { "id": "takeMapPiece", "objective": "Take what's inside the chest." }
+    {
+      "id": "enterCabin",
+      "objective": "Find where the captain slept."
+    },
+    {
+      "id": "liftFigurehead",
+      "objective": "Something heavy lies by the bunk."
+    },
+    {
+      "id": "takeKey",
+      "objective": "Take the key."
+    },
+    {
+      "id": "openChest",
+      "objective": "Open the captain's chest."
+    },
+    {
+      "id": "takeMapPiece",
+      "objective": "Take what's inside the chest."
+    }
   ],
   "hints": [
     "The captain slept in the cabin at the stern. Its door is on the deck.",
     "The one who never wept is carved from stone: the ship's old figurehead.",
-    "The stone figurehead lies beside the captain's bunk. Only the Strongman can lift it: press B next to it."
+    "The stone figurehead lies beside the captain's bunk. Only the Strongman can lift her: if that's you, press B beside her; if not, bring the Strongman bot (point at it and pull the trigger)."
   ],
   "reward": {
     "mapPiece": 2,
     "nextRiddle": "Count the stars that live below, their number opens the door of stone.",
     "message": "Map piece II! The way to the Seagrass Meadows is open."
   },
-  "collectibles": { "coins": 20, "gems": 3 }
+  "collectibles": {
+    "coins": 20,
+    "gems": 3
+  }
 }

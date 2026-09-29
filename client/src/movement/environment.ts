@@ -12,8 +12,9 @@ export interface BoxCollider {
 
 export interface RefillZone {
   center: THREE.Vector3
-  /** Horizontal radius (m). */
+  /** Horizontal radius (m); a full 3D radius when `sphere` (an air-bubble dome). */
   radius: number
+  sphere?: boolean
 }
 
 /** Underwater: free 3D swimming between a floor and the surface. */

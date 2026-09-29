@@ -15,6 +15,8 @@ import type { NetClient, RosterEntry } from '../net/NetClient'
 import { RemotePlayers } from '../net/RemotePlayers'
 import { Voice } from '../net/Voice'
 import type { PoseArray } from '../net/protocol'
+import { BotCrew } from '../bots/BotCrew'
+import { BotCommands } from '../bots/BotCommands'
 import type { GameContext, PartyState, RunRecord, Stage } from './Stage'
 
 const FADE_SECONDS = 0.6
@@ -36,11 +38,13 @@ export class Game implements GameContext {
   readonly desktop: DesktopControls
   readonly record: RunRecord = { whoShotFirst: null, clayHits: 0, clayShots: 0, bullseyeBeforeBattle: false }
   // Single player plays the Strongman until character selection arrives with the lobby.
-  readonly party: PartyState = { character: 'strongman', inventory: new Inventory(), score: 0, hasMap: false, mapPieces: [1], checkpoint: 'intro' }
+  readonly party: PartyState
   stage: Stage | null = null
   net: NetClient | null = null
   remote: RemotePlayers | null = null
   voice: Voice | null = null
+  readonly bots: BotCrew
+  private readonly botCommands: BotCommands
 
   private readonly timer = new THREE.Timer()
   private readonly controllers: Controllers
@@ -57,6 +61,7 @@ export class Game implements GameContext {
     container: HTMLElement,
     readonly settings: Settings,
   ) {
+    this.party = { character: settings.character, inventory: new Inventory(), score: 0, hasMap: false, mapPieces: [1], checkpoint: 'intro' }
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -80,6 +85,8 @@ export class Game implements GameContext {
     this.wrist = new WristComputer(this.controllers.leftGrip)
     this.audio = new AudioSystem(this.camera, this.scene, this.controllers.hands)
     this.hud = new Hud(this.scene, this.camera)
+    this.bots = new BotCrew(this)
+    this.botCommands = new BotCommands(this, this.bots)
 
     const startAudio = () => this.audio.start()
     window.addEventListener('pointerdown', startAudio)
@@ -124,6 +131,16 @@ export class Game implements GameContext {
     this.audio.start()
     await this.voice.start()
     this.voice.setMuted(this.settings.muted)
+    // Orders for bots from other players arrive here when this device runs the bots.
+    net.on<{ botId: string; command: import('../bots/brain').Command; target?: number[]; from: string }>('botCommand', (msg) =>
+      this.bots.command(msg.botId, msg.command, msg.target ? new THREE.Vector3().fromArray(msg.target) : null, msg.from),
+    )
+    net.on<{ character: string }>('characterDenied', () => this.hud.now('Someone in the crew already has that class.', 3))
+    net.on<{ from: string }>('shareAir', (msg) => {
+      this.player.refillFull()
+      const who = net.roster().find((p) => p.sessionId === msg.from)?.name ?? 'A bot'
+      this.hud.now(`${who} shares their air with you.`, 3)
+    })
     this.hud.now(`You're in crew ${net.code}. Share the code so friends can join.`, 6)
   }
 
@@ -145,6 +162,8 @@ export class Game implements GameContext {
       this.desktop.hand.update(dt)
     }
     this.stage?.update(dt, time / 1000)
+    this.bots.update(dt, this.stage)
+    this.botCommands.update(dt)
     this.updateNet(dt)
     this.updateTransition(dt)
     this.hud.update(dt, inXr)
@@ -158,8 +177,12 @@ export class Game implements GameContext {
     const net = this.net
     if (!net || !this.stage) return
     const underwater = this.player.env?.kind === 'swim'
+    // The server has the final say on your class (one of each in a crew).
+    const me = net.me()
+    if (me && me.character !== this.party.character) this.party.character = me.character as PartyState['character']
     net.update(dt, this.stage.id, this.buildPose(), underwater)
-    this.remote?.update(this.stage.id)
+    const others = net.roster().filter((p) => p.sessionId !== net.sessionId)
+    this.remote?.update(this.stage.id, [...others, ...this.bots.remoteBotInfo()])
     this.voice?.update(underwater)
     this.announceRoster(net)
     this.checkMicTouch(dt)

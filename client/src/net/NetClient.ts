@@ -40,9 +40,9 @@ export class NetClient {
     this.remember()
   }
 
-  static async connect(mode: JoinMode, name: string): Promise<NetClient> {
+  static async connect(mode: JoinMode, name: string, character?: string): Promise<NetClient> {
     const client = new Client(serverUrl())
-    const options = { name }
+    const options = { name, character }
     let room: Room
     switch (mode.kind) {
       case 'create':

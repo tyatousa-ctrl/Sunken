@@ -12,6 +12,13 @@ import { SCORE, type ItemKind } from '../systems/Inventory'
 import { makeItem } from '../systems/items'
 import { saveCheckpoint } from '../systems/save'
 import { SKILLS, SkillCooldown } from '../systems/skills'
+import { CLASS_NAMES } from '../systems/crew'
+import type { SpellShape } from '../systems/gesture'
+import { Magic } from '../magic/Magic'
+import { FishSchool, NavigatorTrail } from '../skills/effects'
+import { Particles } from '../fx/Particles'
+import { TUNING } from '../movement/tuning'
+import type { BotWorld } from '../bots/world'
 import { Backpack } from '../ui/Backpack'
 import { MapView } from '../ui/MapView'
 import { Bubbles } from '../world/Bubbles'
@@ -44,6 +51,12 @@ const WRECK_GEMS: [number, number, number][] = [
   [-3.1, DECK_Y + 0.1, 10.1],
 ]
 const SEABED_GEMS: [number, number][] = [[-26, 8]]
+/** Tide runes: mana for spells (one on deck, two on the seabed). */
+const WRECK_RUNES: [number, number, number][] = [[1.2, DECK_Y + 0.12, -1]]
+const SEABED_RUNES: [number, number][] = [[6, -3.5], [-8, 4]]
+const SKILL_TAGS: Record<string, string> = { navigator: 'NAVI', strongman: 'STRONG', deepDiver: 'DIVER', fishWhisperer: 'FISH' }
+const FISH_RANGE = 12
+const SHARE_RANGE = 2.5
 
 // Level 1, The Sinking Galleon (the tutorial level). The galleon settles on the seabed; the map's
 // first riddle leads into the captain's cabin, where the Strongman heaves the stone figurehead aside,
@@ -56,7 +69,13 @@ export class Level1Stage implements Stage {
   private readonly rocks: RockCollider[] = []
   private readonly boxes: BoxCollider[] = []
   private readonly wreck = new Galleon({ hollowCabin: true })
-  private readonly skill = new SkillCooldown(SKILLS.strongman.cooldown)
+  private skill!: SkillCooldown
+  private env!: SwimEnvironment
+  private magic!: Magic
+  private trail!: NavigatorTrail
+  private fish!: FishSchool
+  private botWorld: BotWorld | null = null
+  private readonly glow = new Particles({ max: 500, gravity: 0, drag: 0.5, blending: THREE.AdditiveBlending })
   private readonly collectibles: { item: LooseItem; kind: ItemKind; id: string }[] = []
   private readonly unsubscribe: (() => void)[] = []
   /** Applying steps that already happened before we joined: no announcements. */
@@ -88,6 +107,12 @@ export class Level1Stage implements Stage {
     this.root.add(this.bubbles.points)
     this.world = new SeabedScene(game.scene, this.root, this.bubbles)
     this.rocks.push(...this.world.rocks)
+    this.root.add(this.glow.points)
+    const cls = game.party.character
+    this.skill = new SkillCooldown(SKILLS[cls].cooldown)
+    game.player.setAirCapacity(cls === 'deepDiver' ? TUNING.airCapacity * 2 : TUNING.airCapacity)
+    this.trail = new NavigatorTrail(this.glow)
+    this.fish = new FishSchool(this.root)
 
     // The wreck: foremast shot away in the attack, everything static merged, cabin contents on top.
     this.wreck.foremast.rotation.z = 1.35
@@ -120,7 +145,7 @@ export class Level1Stage implements Stage {
     this.root.add(this.gate.group)
     this.boxes.push(this.gate.collider)
 
-    const env: SwimEnvironment = {
+    const env: SwimEnvironment = (this.env = {
       kind: 'swim',
       floorHeight: sandHeight,
       surfaceY: SURFACE_Y,
@@ -128,7 +153,18 @@ export class Level1Stage implements Stage {
       boxes: this.boxes,
       radius: SANDBOX_RADIUS,
       refillZones: [{ center: VENT_POSITION, radius: VENT_RADIUS }],
-    }
+    })
+    this.magic = new Magic({
+      root: this.root,
+      camera: game.camera,
+      audio: game.audio,
+      hud: game.hud,
+      glow: this.glow,
+      refillZones: env.refillZones,
+      spendRune: () => this.backpack.consume('rune'),
+      broadcast: (kind, at, dir) => game.net?.send('spell', { kind, at: at.toArray(), dir: dir.toArray() }),
+      menu: () => game.settings.spellMenu,
+    })
     game.audio.setEnvironment('water')
     game.wrist.setVisible(true)
     game.vignette.setMask(true)
@@ -167,6 +203,8 @@ export class Level1Stage implements Stage {
     this.bubbles.update(dt)
     this.updateCollectibles(dt)
     this.updatePuzzle(dt)
+    this.updateMagicAndSkills(dt)
+    this.glow.update(dt, game.halfHeight)
 
     if (game.net) game.party.score = game.net.state?.teamScore ?? game.party.score
     game.wrist.update(dt, {
@@ -174,8 +212,9 @@ export class Level1Stage implements Stage {
       depth: game.player.depth,
       speed: game.player.speed,
       refilling: game.player.refilling,
-      skill: this.skill.ready ? 'STRONG READY' : `STRONG ${Math.ceil(this.skill.remaining)}s`,
+      skill: `${SKILL_TAGS[game.party.character]} ${this.skill.ready ? 'READY' : `${Math.ceil(this.skill.remaining)}s`}`,
       score: game.party.score,
+      mana: Math.min(3, game.party.inventory.count('rune')),
     })
   }
 
@@ -198,9 +237,71 @@ export class Level1Stage implements Stage {
       }
       // Left thumbstick click: the treasure map.
       if (hand.stickPressed && (hand.handedness === 'left' || hand.virtual)) this.toggleMap(hand)
-      // B: the Strongman's heave.
-      if (hand.secondaryPressed && (hand.handedness === 'right' || hand.virtual)) this.heave(hand)
+      // B (right controller): your class skill. Y (left controller): ready a spell.
+      if (hand.secondaryPressed && (hand.handedness === 'right' || hand.virtual)) this.useSkill(hand)
+      if (hand.secondaryPressed && hand.handedness === 'left') this.magic.arm(hand)
     }
+    const spell = this.game.inXr ? null : this.game.desktop.spell
+    if (spell) this.magic.castNow(spell)
+  }
+
+  /** B: whatever your class does. */
+  private useSkill(hand: Hand): void {
+    const { game } = this
+    switch (game.party.character) {
+      case 'strongman':
+        return this.heave(hand)
+      case 'navigator': {
+        if (!this.skill.trigger()) return this.spent()
+        this.trail.show(this.route(game.camera.getWorldPosition(new THREE.Vector3()), this.objective()))
+        this.refreshMap()
+        game.hud.now('Hidden ink glows on your map, and a trail lights the way to the next clue.', 4)
+        return
+      }
+      case 'deepDiver': {
+        const head = game.camera.getWorldPosition(new THREE.Vector3())
+        const bot = [...game.bots.bots.values()].find((b) => b.head.distanceTo(head) < SHARE_RANGE)
+        const mate = game.net?.roster().find((p) => p.sessionId !== game.net!.sessionId && p.connected && game.remote?.head(p.sessionId)?.getWorldPosition(new THREE.Vector3()).distanceTo(head)! < SHARE_RANGE)
+        if (!bot && !mate) return void game.hud.now('No diver close enough to share air with.', 2)
+        if (!this.skill.trigger()) return this.spent()
+        if (bot) bot.air.fill()
+        if (mate) game.net!.send('shareAir', { to: mate.sessionId })
+        game.hud.now(`You share your air with ${bot?.name ?? mate!.name}.`, 3)
+        return
+      }
+      case 'fishWhisperer': {
+        const head = game.camera.getWorldPosition(new THREE.Vector3())
+        const target = this.collectibles
+          .filter((c) => c.item.enabled && c.item.object.visible)
+          .map((c) => ({ c, d: c.item.object.getWorldPosition(new THREE.Vector3()).distanceTo(head) }))
+          .filter((x) => x.d < FISH_RANGE)
+          .sort((a, b) => a.d - b.d)[0]
+        if (!target) return void game.hud.now('The fish find nothing worth fetching nearby.', 2)
+        if (this.fish.busy || !this.skill.trigger()) return this.spent()
+        target.c.item.enabled = false
+        this.root.attach(target.c.item.object)
+        this.fish.fetch(head, target.c.item.object, () => {
+          target.c.item.enabled = true
+          this.collect(target.c.item, target.c.kind, null)
+        })
+        game.hud.now('A school of bream darts off to fetch something shiny.', 3)
+        return
+      }
+    }
+  }
+
+  private spent(): void {
+    this.game.hud.now(`${SKILLS[this.game.party.character].name} skill recovering: ${Math.ceil(this.skill.remaining)} s.`, 2)
+  }
+
+  private updateMagicAndSkills(dt: number): void {
+    const { game } = this
+    this.magic.update(dt, game.hands)
+    const head = game.camera.getWorldPosition(new THREE.Vector3())
+    // Currents carry the diver along.
+    game.player.physics.velocity.addScaledVector(this.magic.flowAt(head, game.player.physics.velocity), dt)
+    this.trail.update(dt, head, () => this.route(head, this.objective()))
+    this.fish.update(dt, head)
   }
 
   private openBackpack(hand: Hand): void {
@@ -241,7 +342,11 @@ export class Level1Stage implements Stage {
     const heavy = this.grab.add(new TooHeavy(this.cabin.figurehead, 0.45, () => !this.cabin.lifted))
     heavy.onTry = () =>
       game.hud.now(
-        this.skill.ready ? "She won't budge. You're the Strongman: press B beside her to heave her aside." : "She won't budge. Too heavy to lift by hand.",
+        game.party.character !== 'strongman'
+          ? "She won't budge. Only the Strongman can lift her: point at the Strongman bot and pull the trigger to call it."
+          : this.skill.ready
+            ? "She won't budge. You're the Strongman: press B beside her to heave her aside."
+            : "She won't budge. Too heavy to lift by hand.",
         4,
       )
 
@@ -378,6 +483,10 @@ export class Level1Stage implements Stage {
         this.teach('key', 'The key! Keep hold of it, or stow it in your backpack by letting go over your shoulder.')
       }
     })
+    on<{ kind: SpellShape; at?: number[]; dir?: number[]; by: string }>('spell', (msg) => {
+      if (!msg.at || !msg.dir) return
+      this.magic.castRemote(msg.kind, new THREE.Vector3().fromArray(msg.at), new THREE.Vector3().fromArray(msg.dir), () => this.game.remote?.head(msg.by)?.getWorldPosition(new THREE.Vector3()) ?? null)
+    })
     on<{ id: string; by: string }>('collected', (msg) => {
       const c = this.collectibles.find((x) => x.id === msg.id)
       if (!c) return
@@ -436,10 +545,92 @@ export class Level1Stage implements Stage {
 
   private refreshMap(): void {
     const party = this.game.party
+    // The Navigator reads hidden ink: where this level's secret gems are.
+    const ink = party.character === 'navigator' ? ['Hidden ink: gems glint in the crow\'s nest, in the cabin corner by the door, and far out to the west.'] : []
     this.map.setState(
       { pieces: party.mapPieces, riddle: this.progress.solved ? LEVEL.reward.nextRiddle : LEVEL.riddle },
-      this.progress.unlockedHints,
+      [...this.progress.unlockedHints, ...ink],
     )
+  }
+
+  // ---- Bots ---------------------------------------------------------------------------------------
+
+  /** What the crew's bots need to know about this level. */
+  bots(): BotWorld | null {
+    if (!this.env) return null
+    this.botWorld ??= {
+      env: this.env,
+      spawn: (slot) => {
+        const head = this.game.camera.getWorldPosition(new THREE.Vector3())
+        const a = slot * 2.1
+        return head.add(new THREE.Vector3(Math.cos(a) * 2.5, -0.3, Math.sin(a) * 2.5))
+      },
+      task: () => this.botTask(),
+      collectibles: () =>
+        // Runes are mana for the humans' spells: bots leave them be.
+        this.collectibles
+          .filter((c) => c.kind !== 'rune' && c.item.enabled && c.item.object.visible)
+          .map((c) => ({ id: c.id, position: c.item.object.getWorldPosition(new THREE.Vector3()), take: (botId: string) => this.botCollect(c, botId) })),
+      route: (from, to) => this.route(from, to),
+      refill: VENT_POSITION.clone().setY(sandHeight(VENT_POSITION.x, VENT_POSITION.z)),
+      bubbles: this.bubbles,
+    }
+    return this.botWorld
+  }
+
+  /** The Strongman bot heaves the figurehead, once a human has found the cabin. */
+  private botTask() {
+    if (!this.settled || this.cabin.lifted || this.progress.nextStep?.id !== 'liftFigurehead') return null
+    return {
+      position: this.wreck.group.localToWorld(CABIN.figurehead.clone().add(new THREE.Vector3(0.9, 0.7, -0.1))),
+      skill: 'strongman' as const,
+      ready: this.humanInCabin(),
+      act: (name: string) => {
+        this.step('liftFigurehead')
+        this.game.hud.now(`${name} heaves the stone maiden aside!`, 4)
+      },
+    }
+  }
+
+  private humanInCabin(): boolean {
+    const heads = [this.game.camera.getWorldPosition(new THREE.Vector3())]
+    const net = this.game.net
+    if (net) for (const p of net.roster()) if (p.sessionId !== net.sessionId && p.connected) {
+      const h = this.game.remote?.head(p.sessionId)
+      if (h) heads.push(h.getWorldPosition(new THREE.Vector3()))
+    }
+    return heads.some((h) => this.inCabin(h))
+  }
+
+  private inCabin(p: THREE.Vector3): boolean {
+    const local = this.wreck.group.worldToLocal(p.clone()).sub(CABIN_INTERIOR.center)
+    const h = CABIN_INTERIOR.half
+    return Math.abs(local.x) < h.x && Math.abs(local.y) < h.y && Math.abs(local.z) < h.z
+  }
+
+  /** Waypoints that go through the cabin doorway rather than its walls. */
+  private route(from: THREE.Vector3, to: THREE.Vector3): THREE.Vector3[] {
+    if (!this.settled) return [to]
+    const g = this.wreck.group
+    const outside = g.localToWorld(new THREE.Vector3(0, DECK_Y + 1.0, CABIN_FRONT_Z - 1.4))
+    const inside = g.localToWorld(new THREE.Vector3(0, DECK_Y + 1.0, CABIN_FRONT_Z + 0.9))
+    const aboveDeck = g.localToWorld(new THREE.Vector3(0, DECK_Y + 2.2, CABIN_FRONT_Z - 3.5))
+    const toIn = this.inCabin(to)
+    const fromIn = this.inCabin(from)
+    if (toIn && !fromIn) return [aboveDeck, outside, inside, to]
+    if (fromIn && !toIn) return [inside, outside, to]
+    return [to]
+  }
+
+  private botCollect(c: { item: LooseItem; kind: ItemKind; id: string }, botId: string): void {
+    if (!c.item.enabled) return
+    c.item.enabled = false
+    c.item.object.visible = false
+    const points = SCORE[c.kind] ?? 0
+    // Bots add to the team score; their finds don't go into your backpack.
+    if (this.game.net) this.game.net.send('collect', { id: c.id, points, as: botId })
+    else this.game.party.score += points
+    this.game.audio.play('pop', c.item.object.getWorldPosition(this.v), 0.4)
   }
 
   private finishLevel(): void {
@@ -474,6 +665,8 @@ export class Level1Stage implements Stage {
     for (const [x, z] of SEABED_COINS) this.addCollectible(this.at(this.root, makeItem('coin'), x, sandHeight(x, z) + 0.12, z), 'coin')
     for (const [x, y, z] of WRECK_GEMS) this.addCollectible(this.at(this.wreck.shake, makeItem('gem'), x, y, z), 'gem')
     for (const [x, z] of SEABED_GEMS) this.addCollectible(this.at(this.root, makeItem('gem'), x, sandHeight(x, z) + 0.12, z), 'gem')
+    for (const [x, y, z] of WRECK_RUNES) this.addCollectible(this.at(this.wreck.shake, makeItem('rune'), x, y, z), 'rune')
+    for (const [x, z] of SEABED_RUNES) this.addCollectible(this.at(this.root, makeItem('rune'), x, sandHeight(x, z) + 0.15, z), 'rune')
   }
 
   private at(parent: THREE.Object3D, object: THREE.Object3D, x: number, y: number, z: number): THREE.Object3D {
@@ -526,6 +719,11 @@ export class Level1Stage implements Stage {
     this.backpack.refresh()
     if (kind === 'coin') this.teach('coin', 'Coins and gems go straight into your backpack. Press A/X to look inside.')
     if (kind === 'gem') game.hud.now('A secret gem! +50', 3)
+    if (kind === 'rune') {
+      this.teach('rune', 'A tide rune! Runes power magic. Press Y, then hold the trigger, draw a circle, triangle or zigzag in the air, and let go.', 7)
+      if (this.taught.has('rune2')) game.hud.now(`Rune charges: ${Math.min(3, game.party.inventory.count('rune'))}/3`, 2)
+      this.taught.add('rune2')
+    }
   }
 
   private updateCollectibles(dt: number): void {

@@ -8,6 +8,8 @@ export interface DiveStatus {
   /** e.g. "STRONG READY" or "STRONG 12s". */
   skill?: string
   score?: number
+  /** Rune charges 0–3. */
+  mana?: number
 }
 
 // Dive computer on the left wrist: air gauge, depth and speed. Mirrored to a DOM readout on desktop.
@@ -89,6 +91,11 @@ export class WristComputer {
       // Skill cooldown and team score replace the labels once a level is under way.
       ctx.fillStyle = status.skill?.endsWith('READY') ? '#7dffa8' : '#ffd166'
       ctx.fillText(status.skill ?? '', 20, 142)
+      if (status.mana !== undefined) {
+        ctx.fillStyle = '#7fe9ff'
+        ctx.textAlign = 'center'
+        ctx.fillText('◆'.repeat(status.mana) + '◇'.repeat(3 - status.mana), 205, 142)
+      }
       ctx.fillStyle = '#f2c230'
       ctx.textAlign = 'right'
       ctx.fillText(status.score !== undefined ? `★ ${status.score}` : '', 300, 142)

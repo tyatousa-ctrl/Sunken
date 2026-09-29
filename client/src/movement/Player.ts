@@ -5,13 +5,13 @@ import type { Bubbles } from '../world/Bubbles'
 import { AirTank } from './AirTank'
 import { SwimPhysics, type HandSample, type SwimResult } from './SwimPhysics'
 import type { ComfortVignette } from './ComfortVignette'
-import type { BoxCollider, PlayerEnvironment, SwimEnvironment, WalkEnvironment } from './environment'
+import type { PlayerEnvironment, SwimEnvironment, WalkEnvironment } from './environment'
+import { swimPush } from './collide'
 
 export type TurnMode = 'snap' | 'smooth'
 
 const SNAP_ANGLE = THREE.MathUtils.degToRad(30)
 const SMOOTH_TURN_SPEED = 1.6
-const HEAD_CLEARANCE = 0.35
 const EXHALE_INTERVAL = 4
 const WALK_SPEED = 2
 const GRAVITY = 9.8
@@ -24,7 +24,7 @@ const SEATED_LIFT = 0.45
 // respawn fades, jet bubbles and jet haptics.
 export class Player {
   readonly physics = new SwimPhysics()
-  readonly air = new AirTank()
+  air = new AirTank()
   readonly checkpoint = new THREE.Vector3(0, 0.6, 4)
   refilling = false
   /** Set when a walking player drops into the water; the stage decides what happens. */
@@ -53,9 +53,6 @@ export class Player {
   private readonly drift = new THREE.Vector3()
   private readonly forward = new THREE.Vector3()
   private readonly right = new THREE.Vector3()
-  private readonly boxLocal = new THREE.Vector3()
-  private readonly boxClosest = new THREE.Vector3()
-  private readonly boxOut = new THREE.Vector3()
 
   constructor(
     private readonly rig: THREE.Group,
@@ -113,6 +110,14 @@ export class Player {
 
   refillFull(): void {
     this.air.fill()
+  }
+
+  /** The Deep Diver carries twice the air. */
+  setAirCapacity(capacity: number): void {
+    if (capacity === this.air.capacity) return
+    const fraction = this.air.fraction
+    this.air = new AirTank(capacity)
+    this.air.air = capacity * fraction
   }
 
   update(dt: number, inXr: boolean, desktop: DesktopControls): void {
@@ -230,7 +235,7 @@ export class Player {
     this.hands.forEach((hand, i) => {
       const s = this.samples[i]
       s.gripHeld = hand.connected && hand.squeeze && !hand.held && !hand.anchor
-      s.trigger = hand.connected && !hand.held ? hand.trigger : 0
+      s.trigger = hand.connected && !hand.held && !hand.busy ? hand.trigger : 0
       s.velocity.copy(hand.localVel).applyQuaternion(this.rig.quaternion)
       hand.pointDir(s.pointDir)
       hand.worldPos(s.offset).sub(this.head)
@@ -313,28 +318,7 @@ export class Player {
   private collide(env: SwimEnvironment): void {
     this.rig.updateMatrixWorld(true)
     const head = this.camera.getWorldPosition(this.head)
-    const push = this.v1.set(0, 0, 0)
-
-    const floor = env.floorHeight(head.x, head.z) + HEAD_CLEARANCE
-    if (head.y < floor) push.y += floor - head.y
-    const ceiling = env.surfaceY - HEAD_CLEARANCE
-    if (head.y > ceiling) push.y += ceiling - head.y
-
-    for (const rock of env.rocks) {
-      const offset = this.v2.subVectors(head, rock.center)
-      const min = rock.radius + HEAD_CLEARANCE
-      const dist = offset.length()
-      if (dist < min && dist > 1e-4) push.addScaledVector(offset, (min - dist) / dist)
-    }
-
-    for (const box of env.boxes) this.pushOutOfBox(head, box, push)
-
-    const horizontal = Math.hypot(head.x, head.z)
-    if (horizontal > env.radius) {
-      push.x -= (head.x / horizontal) * (horizontal - env.radius)
-      push.z -= (head.z / horizontal) * (horizontal - env.radius)
-    }
-
+    const push = swimPush(head, env, this.v1)
     if (push.lengthSq() === 0) return
     this.rig.position.add(push)
     // Cancel the velocity component that drove us into the obstacle.
@@ -343,34 +327,9 @@ export class Player {
     if (into < 0) this.physics.velocity.addScaledVector(normal, -into)
   }
 
-  /** Keep the head sphere out of an oriented box: push along the shortest way out. */
-  private pushOutOfBox(head: THREE.Vector3, box: BoxCollider, push: THREE.Vector3): void {
-    const local = this.boxLocal.copy(head).add(push).applyMatrix4(box.inverse)
-    const h = box.half
-    const closest = this.boxClosest.set(
-      THREE.MathUtils.clamp(local.x, -h.x, h.x),
-      THREE.MathUtils.clamp(local.y, -h.y, h.y),
-      THREE.MathUtils.clamp(local.z, -h.z, h.z),
-    )
-    const out = this.boxOut.subVectors(local, closest)
-    const dist = out.length()
-    if (dist >= HEAD_CLEARANCE) return
-    if (dist > 1e-4) {
-      out.multiplyScalar((HEAD_CLEARANCE - dist) / dist)
-    } else {
-      // Centre inside the box: leave through the nearest face.
-      const gaps = [h.x - Math.abs(local.x), h.y - Math.abs(local.y), h.z - Math.abs(local.z)]
-      const axis = gaps.indexOf(Math.min(...gaps))
-      out.set(0, 0, 0).setComponent(axis, Math.sign(local.getComponent(axis) || 1) * (gaps[axis] + HEAD_CLEARANCE))
-    }
-    // Box-local offset → world (rotation only; transformDirection normalises, so keep the length).
-    const length = out.length()
-    push.addScaledVector(out.transformDirection(box.matrix), length)
-  }
-
   private updateAir(dt: number, env: SwimEnvironment, thrust: number[]): void {
     const head = this.camera.getWorldPosition(this.head)
-    this.refilling = env.refillZones.some((z) => Math.hypot(head.x - z.center.x, head.z - z.center.z) < z.radius)
+    this.refilling = env.refillZones.some((z) => (z.sphere ? z.center.distanceTo(head) : Math.hypot(head.x - z.center.x, head.z - z.center.z)) < z.radius)
     if (this.refilling) this.air.refill(dt)
     else this.air.drain(dt, thrust)
     if (this.air.empty) this.respawning = 3

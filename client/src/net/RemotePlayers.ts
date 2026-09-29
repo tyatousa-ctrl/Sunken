@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { NetClient, RosterEntry } from './NetClient'
+import type { NetClient } from './NetClient'
 import type { PoseArray, PosesBroadcast } from './protocol'
 
 /** Others are drawn this far in the past, so there are always two poses to blend between. */
@@ -12,8 +12,17 @@ interface Snapshot {
   water: boolean
 }
 
-// Another diver: a masked head, a body hanging below it, two gloved hands, and a name tag.
-class Avatar {
+export interface AvatarInfo {
+  sessionId: string
+  name: string
+  color: string
+  connected: boolean
+  bot?: boolean
+}
+
+// A diver: a masked head, a body hanging below it, two gloved hands, and a name tag.
+// Used for other players and for bots.
+export class Avatar {
   readonly group = new THREE.Group()
   readonly head = new THREE.Group()
   readonly hands: [THREE.Group, THREE.Group] = [new THREE.Group(), new THREE.Group()]
@@ -54,29 +63,40 @@ class Avatar {
       hand.add(glove)
     }
 
-    this.tagCanvas.width = 256
+    this.tagCanvas.width = 384
     this.tagCanvas.height = 64
     this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(this.tagCanvas), depthTest: false, fog: false }))
-    this.tag.scale.set(0.5, 0.125, 1)
+    this.tag.scale.set(0.6, 0.1, 1)
     this.tag.renderOrder = 700
     this.group.add(this.head, this.body, ...this.hands, this.tag)
   }
 
-  setInfo(entry: RosterEntry): void {
+  setInfo(entry: AvatarInfo): void {
     this.color.color.set(entry.color)
     const text = entry.connected ? entry.name : `${entry.name} (reconnecting)`
-    if (text === this.tagText) return
-    this.tagText = text
+    if (text + entry.bot === this.tagText) return
+    this.tagText = text + entry.bot
     const ctx = this.tagCanvas.getContext('2d')!
-    ctx.clearRect(0, 0, 256, 64)
+    ctx.clearRect(0, 0, 384, 64)
     ctx.fillStyle = 'rgba(0,0,0,0.55)'
     ctx.beginPath()
-    ctx.roundRect(4, 8, 248, 48, 16)
+    ctx.roundRect(4, 8, 376, 48, 16)
     ctx.fill()
+    let x = 192
+    if (entry.bot) {
+      // Small robot-head icon: bots are marked as bots.
+      ctx.fillStyle = '#cfe8ff'
+      ctx.fillRect(16, 22, 26, 22)
+      ctx.fillRect(27, 14, 4, 8)
+      ctx.fillStyle = '#1b2a33'
+      ctx.fillRect(21, 28, 5, 5)
+      ctx.fillRect(32, 28, 5, 5)
+      x = 206
+    }
     ctx.fillStyle = entry.color
-    ctx.font = 'bold 30px system-ui, sans-serif'
+    ctx.font = `bold ${text.length > 18 ? 24 : 30}px system-ui, sans-serif`
     ctx.textAlign = 'center'
-    ctx.fillText(text, 128, 44)
+    ctx.fillText(text, x, 44)
     ;(this.tag.material.map as THREE.Texture).needsUpdate = true
   }
 
@@ -151,10 +171,10 @@ export class RemotePlayers {
     return this.avatars.get(sessionId)?.water ?? false
   }
 
-  update(myStage: string): void {
-    const roster = this.net.roster()
+  /** Draw these players (and, if another device runs the bots, those bots) from relayed poses. */
+  update(myStage: string, entries: AvatarInfo[]): void {
     const present = new Set<string>()
-    for (const entry of roster) {
+    for (const entry of entries) {
       if (entry.sessionId === this.net.sessionId) continue
       present.add(entry.sessionId)
       let avatar = this.avatars.get(entry.sessionId)

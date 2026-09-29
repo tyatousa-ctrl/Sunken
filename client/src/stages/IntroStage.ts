@@ -13,6 +13,11 @@ import { DrunkState } from '../intro/drunk'
 import { GearRack, TABLE_POSITION, type GearPiece } from '../intro/GearRack'
 import { Shotgun } from '../intro/Shotgun'
 import { AboveWater } from '../world/above/Coast'
+import { CREW_BOARD_SPOT, CrewBoard } from '../intro/CrewBoard'
+import type { BotWorld } from '../bots/world'
+import type { CharacterClass } from '../systems/crew'
+import { CLASS_NAMES } from '../systems/crew'
+import { saveSettings } from '../core/settings'
 import { BOW_Z, CABIN_FRONT_Z, DECK_Y, Galleon, STERN_Z, halfWidthAt } from '../world/ship/Galleon'
 import { Level1Stage } from './Level1Stage'
 
@@ -38,6 +43,7 @@ const OBSTACLES: Obstacle[] = [
   { x: halfWidthAt(6.2) - 0.5, z: 6.2, r: 0.45 },
   { x: BARREL_POSITION.x, z: BARREL_POSITION.z, r: 0.45 },
   { x: -2.35, z: BOARD_POSITION.z - THROW_DISTANCE - 0.1, r: 0.15 },
+  { x: CREW_BOARD_SPOT.x, z: CREW_BOARD_SPOT.z, r: 0.35 },
 ]
 
 // Milestone 3: golden hour on the galleon's deck. Clay shooting is the fake-out; a stray pellet into
@@ -60,6 +66,9 @@ export class IntroStage implements Stage {
   private crew!: Crew
   private gear!: GearRack
   private barrel!: BeerBarrel
+  private crewBoard!: CrewBoard
+  private walkEnv!: WalkEnvironment
+  private botWorld: BotWorld | null = null
   private darts!: DartBoardArea
   private readonly drunk = new DrunkState()
   private baseFog = { near: 0, far: 0 }
@@ -106,7 +115,8 @@ export class IntroStage implements Stage {
       camera: game.camera,
       onDrink: (amount) => this.onDrink(amount),
     })
-    const walk = this.walkEnvironment()
+    const walk = (this.walkEnv = this.walkEnvironment())
+    this.crewBoard = new CrewBoard(this.ship, game.audio, (cls) => this.chooseClass(cls))
     this.darts = new DartBoardArea(this.root, this.ship, this.grab, [{ name: 'You', color: '#e8b930' }], {
       audio: game.audio,
       debris: this.debris,
@@ -137,6 +147,7 @@ export class IntroStage implements Stage {
     this.grab.update(dt, game.hands, game.player.physics.velocity, game.rig)
     this.range.update(dt)
     this.darts.update(dt, game.hands)
+    this.crewBoard.update(dt, game.hands, game.bots.members(), game.net?.sessionId ?? 'me')
     this.updateDrunk(dt)
     this.crew.update(dt, elapsed)
     this.ship.update(elapsed)
@@ -188,6 +199,45 @@ export class IntroStage implements Stage {
     })
     this.attack.t = Math.max(0, secondsAgo)
     if (shooter !== 'You') game.hud.now(`${shooter} shot the ship in the bay!`, 3)
+  }
+
+  private chooseClass(cls: CharacterClass): void {
+    const { game } = this
+    if (game.net) {
+      game.net.send('profile', { character: cls })
+    } else {
+      game.party.character = cls
+    }
+    game.settings.character = cls
+    saveSettings(game.settings)
+    game.hud.now(`You're the ${CLASS_NAMES[cls]} now.`, 3)
+  }
+
+  /** Bots walk the deck with the crew and go over the side when it's time. */
+  bots(): BotWorld | null {
+    if (!this.walkEnv) return null
+    this.botWorld ??= {
+      env: this.walkEnv,
+      spawn: (slot) => {
+        const head = this.game.camera.getWorldPosition(new THREE.Vector3())
+        const p = head.add(new THREE.Vector3(Math.cos(slot * 2.1) * 1.8, 0, Math.sin(slot * 2.1) * 1.8))
+        this.walkEnv.constrain(p)
+        return p
+      },
+      task: () => null,
+      collectibles: () => [],
+      route: (_from, to) => [to],
+      refill: null,
+      bubbles: null,
+      abandonShip: (from) => {
+        if (this.phase !== 'attack' || !railsOpen(this.attack!.t, this.gear.complete)) return null
+        const local = this.ship.group.worldToLocal(from.clone())
+        const side = Math.sign(local.x) || 1
+        const z = THREE.MathUtils.clamp(local.z, BOW_Z + 3, CABIN_FRONT_Z - 1)
+        return this.ship.group.localToWorld(new THREE.Vector3(side * (halfWidthAt(z) + 2.5), DECK_Y, z))
+      },
+    }
+    return this.botWorld
   }
 
   // ---- Crew play ---------------------------------------------------------------------------------

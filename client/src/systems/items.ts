@@ -37,6 +37,14 @@ export function makeItem(kind: ItemKind): THREE.Group {
       group.add(piece)
       break
     }
+    case 'rune': {
+      const stone = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.025, 7), std(0x44505a, { roughness: 0.9 }))
+      stone.rotation.x = Math.PI / 2
+      const glyph = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.006, 6, 3), std(0x7fe9ff, { emissive: 0x3fb7cf, roughness: 0.3 }))
+      glyph.position.z = 0.014
+      group.add(stone, glyph)
+      break
+    }
     case 'shell': {
       const shell = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), std(0xe9c3b0))
       shell.scale.set(1, 0.45, 0.8)
@@ -97,6 +105,20 @@ export function drawItemIcon(ctx: CanvasRenderingContext2D, kind: ItemKind, cx: 
         i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r)
       }
       ctx.fill()
+      break
+    case 'rune':
+      ctx.fillStyle = '#44505a'
+      ctx.beginPath()
+      ctx.arc(0, 0, s * 0.7, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = '#7fe9ff'
+      ctx.lineWidth = s * 0.12
+      ctx.beginPath()
+      ctx.moveTo(0, -s * 0.4)
+      ctx.lineTo(s * 0.35, s * 0.3)
+      ctx.lineTo(-s * 0.35, s * 0.3)
+      ctx.closePath()
+      ctx.stroke()
       break
     case 'shell':
       ctx.fillStyle = '#e9c3b0'

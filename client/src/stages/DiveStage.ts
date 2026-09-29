@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { disposeTree, type GameContext, type Stage } from '../core/Stage'
 import { GrabSystem } from '../interaction/GrabSystem'
+import type { BotWorld } from '../bots/world'
 import type { SwimEnvironment } from '../movement/environment'
 import { Bubbles } from '../world/Bubbles'
 import { addSandboxProps } from '../world/SandboxProps'
@@ -14,6 +15,8 @@ export class DiveStage implements Stage {
   private world!: SeabedScene
   private grab!: GrabSystem
   private readonly rocks: RockCollider[] = []
+  private botWorld: BotWorld | null = null
+  private env: SwimEnvironment | null = null
 
   constructor(private readonly game: GameContext) {}
 
@@ -27,7 +30,7 @@ export class DiveStage implements Stage {
     this.grab = new GrabSystem({ rocks: this.rocks, floor: sandHeight })
     addSandboxProps(this.root, this.grab, this.rocks, () => game.player.refillFull())
 
-    const env: SwimEnvironment = {
+    const env: SwimEnvironment = (this.env = {
       kind: 'swim',
       floorHeight: sandHeight,
       surfaceY: SURFACE_Y,
@@ -35,7 +38,7 @@ export class DiveStage implements Stage {
       boxes: [],
       radius: SANDBOX_RADIUS,
       refillZones: [{ center: VENT_POSITION, radius: VENT_RADIUS }],
-    }
+    })
 
     game.audio.setEnvironment('water')
     game.wrist.setVisible(true)
@@ -57,6 +60,20 @@ export class DiveStage implements Stage {
       speed: game.player.speed,
       refilling: game.player.refilling,
     })
+  }
+
+  bots(): BotWorld | null {
+    if (!this.env) return null
+    this.botWorld ??= {
+      env: this.env,
+      spawn: (slot) => new THREE.Vector3(Math.cos(slot * 2.1) * 2.5, 1.6, 4 + Math.sin(slot * 2.1) * 2.5),
+      task: () => null,
+      collectibles: () => [],
+      route: (_from, to) => [to],
+      refill: VENT_POSITION.clone(),
+      bubbles: this.bubbles,
+    }
+    return this.botWorld
   }
 
   exit(): void {

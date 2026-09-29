@@ -14,10 +14,14 @@ export interface Settings {
   muted: boolean
   /** Name shown to your crew. */
   name: string
+  /** Accessibility: pick spells from cards instead of drawing them. */
+  spellMenu: boolean
+  /** Preferred class (the crew board on deck can change it). */
+  character: 'navigator' | 'strongman' | 'deepDiver' | 'fishWhisperer'
 }
 
 const KEY = 'sunken-sicily.settings'
-const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap', seated: false, drunkFx: true, muted: false, name: '' }
+const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap', seated: false, drunkFx: true, muted: false, name: '', spellMenu: false, character: 'strongman' }
 
 export function loadSettings(): Settings {
   try {

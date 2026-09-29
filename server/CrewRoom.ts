@@ -3,6 +3,7 @@ import { Room, type Client } from '@colyseus/core'
 import { LevelProgress, type LevelData } from '../client/src/systems/LevelProgress.ts'
 import { MAX_PLAYERS, POSE_RATE, RECONNECT_SECONDS, SLOT_COLORS, SLOT_NAMES, type PoseMessage } from '../client/src/net/protocol.ts'
 import { ClaimTable, FirstWins, cleanName, generateCode, lowestFreeSlot } from './logic.ts'
+import { CLASSES, freeClass, hostOf, type CharacterClass, type HumanSeat } from '../client/src/systems/crew.ts'
 import { CrewPlayer, CrewState } from './schema.ts'
 
 const LEVEL1 = JSON.parse(readFileSync(new URL('../client/src/data/levels/level1.json', import.meta.url), 'utf8')) as LevelData
@@ -20,6 +21,7 @@ export class CrewRoom extends Room<{ state: CrewState }> {
   private readonly collected = new FirstWins()
   private readonly clays = new FirstWins()
   private readonly poses = new Map<string, PoseMessage>()
+  private readonly botPoses = new Map<string, PoseMessage>()
   private readonly level1 = new LevelProgress(LEVEL1)
   private clayId = 0
   private lastPull = 0
@@ -48,8 +50,37 @@ export class CrewRoom extends Room<{ state: CrewState }> {
     this.onMessage('profile', (client, msg: { name?: string; character?: string }) => {
       const player = this.player(client)
       if (!player) return
-      player.name = cleanName(msg?.name, player.name)
-      if (typeof msg?.character === 'string') player.character = msg.character.slice(0, 16)
+      if (msg?.name !== undefined) player.name = cleanName(msg.name, player.name)
+      // One of each class among the humans; bots take whatever's left.
+      const wanted = msg?.character as CharacterClass
+      if (CLASSES.includes(wanted) && wanted !== player.character) {
+        const others = this.seats().filter((h) => h.id !== client.sessionId)
+        if (freeClass(others, wanted) === wanted) player.character = wanted
+        else client.send('characterDenied', { character: wanted })
+      }
+    })
+
+    // Bots run on the host's device (the connected human in the lowest slot); the server relays
+    // their poses and lets the host act for them.
+    this.onMessage('botPoses', (client, msg: { stage?: string; poses?: Record<string, number[]> }) => {
+      if (client.sessionId !== hostOf(this.seats()) || !msg?.poses) return
+      this.botPoses.clear()
+      for (const [id, pose] of Object.entries(msg.poses)) {
+        if (!/^bot-[0-3]$/.test(id) || !Array.isArray(pose) || pose.length !== POSE_LENGTH || !pose.every(Number.isFinite)) continue
+        this.botPoses.set(id, { stage: String(msg.stage ?? '').slice(0, 16), pose, water: true })
+      }
+    })
+    this.onMessage('botCommand', (client, msg: unknown) => {
+      const host = this.clients.find((c) => c.sessionId === hostOf(this.seats()))
+      host?.send('botCommand', { from: client.sessionId, ...(msg as object) })
+    })
+    // Deep Diver sharing air, and spells: relayed so everyone sees and feels them.
+    this.onMessage('shareAir', (client, msg: { to?: string }) => {
+      this.clients.find((c) => c.sessionId === msg?.to)?.send('shareAir', { from: client.sessionId })
+    })
+    this.onMessage('spell', (client, msg: { kind?: string; at?: number[]; dir?: number[] }) => {
+      if (!['circle', 'triangle', 'zigzag'].includes(String(msg?.kind))) return
+      this.broadcast('spell', { kind: msg.kind, at: msg.at, dir: msg.dir, by: client.sessionId }, { except: client })
     })
 
     // Intro: the first pellet to hit the "merchant" starts the attack, for everyone at once.
@@ -100,12 +131,14 @@ export class CrewRoom extends Room<{ state: CrewState }> {
     })
 
     // Collectibles: the first to touch one gets it; the team score goes up once.
-    this.onMessage('collect', (client, msg: { id?: string; points?: number }) => {
+    this.onMessage('collect', (client, msg: { id?: string; points?: number; as?: string }) => {
       const id = typeof msg?.id === 'string' ? msg.id.slice(0, 32) : ''
       if (!id || !this.collected.tryTake(id)) return
       this.state.collected.push(id)
       this.state.teamScore += Math.max(0, Math.min(MAX_POINTS, Number(msg.points) || 0))
-      this.broadcast('collected', { id, by: client.sessionId })
+      // The host may collect on behalf of a bot.
+      const by = typeof msg.as === 'string' && /^bot-[0-3]$/.test(msg.as) && client.sessionId === hostOf(this.seats()) ? msg.as : client.sessionId
+      this.broadcast('collected', { id, by })
     })
 
     // Riddle steps: validated in order on the server, then applied by everyone.
@@ -128,13 +161,14 @@ export class CrewRoom extends Room<{ state: CrewState }> {
   }
 
   onJoin(client: Client, options?: { name?: string; character?: string }): void {
+    const seats = this.seats()
     const taken = [...this.state.players.values()].map((p) => p.slot)
     const slot = lowestFreeSlot(taken, MAX_PLAYERS)
     const player = new CrewPlayer()
     player.slot = slot
     player.name = cleanName(options?.name, SLOT_NAMES[slot])
     player.color = SLOT_COLORS[slot]
-    player.character = typeof options?.character === 'string' ? options.character.slice(0, 16) : 'strongman'
+    player.character = freeClass(seats, options?.character as CharacterClass)
     player.connected = true
     player.stage = ''
     player.hits = 0
@@ -170,8 +204,18 @@ export class CrewRoom extends Room<{ state: CrewState }> {
     return this.state.players.get(client.sessionId)
   }
 
+  private seats(): HumanSeat[] {
+    const seats: HumanSeat[] = []
+    this.state.players.forEach((p, id) => seats.push({ id, slot: p.slot, name: p.name, character: p.character as CharacterClass, connected: p.connected }))
+    return seats
+  }
+
   private broadcastPoses(): void {
-    if (this.poses.size === 0) return
-    this.broadcast('poses', { t: Date.now(), players: Object.fromEntries(this.poses) })
+    if (this.poses.size === 0 && this.botPoses.size === 0) return
+    // Bots in slots a human now occupies are dropped.
+    const humanSlots = new Set(this.seats().filter((h) => h.connected).map((h) => `bot-${h.slot}`))
+    const players: Record<string, PoseMessage> = Object.fromEntries(this.poses)
+    for (const [id, pose] of this.botPoses) if (!humanSlots.has(id)) players[id] = pose
+    this.broadcast('poses', { t: Date.now(), players })
   }
 }

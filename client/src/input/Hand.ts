@@ -42,6 +42,8 @@ export class Hand {
   readonly localVel = new THREE.Vector3()
 
   held: Interactable | null = null
+  /** Pointing at a bot menu: the trigger isn't a bubble jet right now. */
+  busy = false
   virtual: VirtualPad | null = null
   /** World point this hand is holding on to (a rock ledge), if any. */
   anchor: THREE.Vector3 | null = null
