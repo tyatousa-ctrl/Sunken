@@ -28,6 +28,8 @@ export class Shotgun implements Interactable {
   readonly action = new ShotgunAction()
   main: Hand | null = null
   support: Hand | null = null
+  /** Drunk aim sway (radians); steadied by half when held two-handed. */
+  sway = 0
 
   private readonly model = new THREE.Group()
   private readonly hinge = new THREE.Group()
@@ -40,6 +42,7 @@ export class Shotgun implements Interactable {
   private recoil = 0
   private prevPitch = 0
   private quickReloadTimer = 0
+  private swayTime = 0
   private readonly v = new THREE.Vector3()
   private readonly v2 = new THREE.Vector3()
   private readonly q = new THREE.Quaternion()
@@ -129,6 +132,13 @@ export class Shotgun implements Interactable {
     if (!main) return
 
     if (this.support) this.aimTwoHanded(main, this.support)
+    else this.object.quaternion.identity()
+    if (this.sway > 0) {
+      this.swayTime += dt
+      const s = this.sway * (this.support ? 0.5 : 1)
+      this.object.rotateX(Math.sin(this.swayTime * 1.7) * s)
+      this.object.rotateY(Math.sin(this.swayTime * 1.1 + 1) * s)
+    }
 
     if (this.quickReloadTimer > 0) {
       this.quickReloadTimer = Math.max(0, this.quickReloadTimer - dt)

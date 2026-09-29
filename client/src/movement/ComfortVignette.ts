@@ -11,7 +11,11 @@ export class ComfortVignette {
   fade = 0
   /** Separate fade for stage transitions, so the two never fight. */
   transition = 0
-  private readonly uniforms = { uInner: { value: 2 }, uFade: { value: 0 }, uMask: { value: 0 } }
+  /** Passing out after too much beer. */
+  blackout = 0
+  /** Warm drunken haze, 0–1 (never moves the camera: colour only). */
+  drunk = 0
+  private readonly uniforms = { uInner: { value: 2 }, uFade: { value: 0 }, uMask: { value: 0 }, uDrunk: { value: 0 }, uTime: { value: 0 } }
   private amount = 0
 
   constructor(
@@ -30,6 +34,8 @@ export class ComfortVignette {
         uniform float uInner;
         uniform float uFade;
         uniform float uMask;
+        uniform float uDrunk;
+        uniform float uTime;
         varying vec3 vDir;
         void main() {
           // Angle from straight ahead; the sphere is parented to the camera so -Z is the view direction.
@@ -39,7 +45,12 @@ export class ComfortVignette {
           vec3 d = normalize(vDir);
           float oval = length(vec2(d.x * 0.85, d.y * 1.25)) / max(-d.z, 0.05);
           float mask = smoothstep(1.25, 1.7, oval) * 0.9 * uMask;
-          gl_FragColor = vec4(0.0, 0.02, 0.04, max(max(edge, uFade), mask));
+          float dark = max(max(edge, uFade), mask);
+          // Drunk haze: amber, heavier at the edges, slowly breathing.
+          float haze = uDrunk * (0.35 + 0.65 * smoothstep(0.2, 1.2, angle)) * (0.85 + 0.15 * sin(uTime * 1.3));
+          float alpha = 1.0 - (1.0 - dark) * (1.0 - haze);
+          vec3 color = mix(vec3(0.55, 0.33, 0.08), vec3(0.0, 0.02, 0.04), dark / max(dark + haze, 1e-3));
+          gl_FragColor = vec4(color, alpha);
         }`,
       transparent: true,
       depthTest: false,
@@ -70,6 +81,8 @@ export class ComfortVignette {
     this.amount += (target - this.amount) * (1 - Math.exp(-rate * dt))
     // At rest the inner edge sits outside the field of view (~1.5 rad); at full it narrows to ~0.45 rad.
     this.uniforms.uInner.value = THREE.MathUtils.lerp(1.5, 0.45, this.amount)
-    this.uniforms.uFade.value = Math.max(this.fade, this.transition)
+    this.uniforms.uFade.value = Math.max(this.fade, this.transition, this.blackout)
+    this.uniforms.uDrunk.value = this.drunk
+    this.uniforms.uTime.value += dt
   }
 }

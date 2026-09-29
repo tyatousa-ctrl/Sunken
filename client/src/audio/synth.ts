@@ -1,7 +1,7 @@
 // Procedural one-shot sounds baked into AudioBuffers (no audio files to license yet).
 // Each recipe is filtered noise and/or tones with an envelope, plus optional echoes.
 
-export type SfxName = 'gunshot' | 'cannon' | 'crack' | 'splash' | 'bigSplash' | 'click' | 'impact' | 'whistle' | 'gulp' | 'thud' | 'pop'
+export type SfxName = 'gunshot' | 'cannon' | 'crack' | 'splash' | 'bigSplash' | 'click' | 'impact' | 'whistle' | 'gulp' | 'thud' | 'pop' | 'pour' | 'dartHit'
 
 interface Recipe {
   seconds: number
@@ -31,6 +31,8 @@ const RECIPES: Record<SfxName, Recipe> = {
   gulp: { seconds: 0.35, tone: [260, 140, 0.6], noise: 0.1, lowpass: 500, attack: 0.03, decay: 0.12, gain: 0.5 },
   thud: { seconds: 0.2, noise: 0.5, lowpass: 600, thump: [110, 0.8], decay: 0.05, gain: 0.7 },
   pop: { seconds: 0.15, tone: [900, 400, 0.5], decay: 0.04, gain: 0.4 },
+  pour: { seconds: 0.6, noise: 1, lowpass: 2200, highpass: 700, attack: 0.05, decay: 0.3, gain: 0.3 },
+  dartHit: { seconds: 0.18, noise: 0.7, lowpass: 1800, thump: [180, 0.6], decay: 0.03, gain: 0.8 },
 }
 
 export function synthesize(context: BaseAudioContext, name: SfxName): AudioBuffer {

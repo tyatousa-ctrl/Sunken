@@ -8,10 +8,12 @@ export interface Settings {
   turn: TurnMode
   /** Raises the view for players sitting down. */
   seated: boolean
+  /** Drunk visual effects (fog, haze); the gameplay wobble stays. */
+  drunkFx: boolean
 }
 
 const KEY = 'sunken-sicily.settings'
-const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap', seated: false }
+const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap', seated: false, drunkFx: true }
 
 export function loadSettings(): Settings {
   try {

@@ -15,6 +15,9 @@ export interface GearState {
   map: boolean
 }
 
+/** The captain's table with the map, ship-local (forward of the dart lane). */
+export const TABLE_POSITION = new THREE.Vector3(-1.5, DECK_Y, 4.2)
+
 /** Tank clips on if you let go of it this close to your head (over the shoulder, on the back). */
 const TANK_CLIP_DISTANCE = 0.75
 /** Mask goes on when held this close to the face. */
@@ -66,8 +69,7 @@ export class GearRack {
     rack.add(tank, mask, fins)
 
     const table = makeTable()
-    const tz = 7.2
-    table.position.set(-1.4, DECK_Y, tz)
+    table.position.copy(TABLE_POSITION)
     ship.shake.add(table)
     const map = makeMapMesh()
     map.rotation.x = -Math.PI / 2

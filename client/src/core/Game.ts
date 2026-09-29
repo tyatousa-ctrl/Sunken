@@ -29,7 +29,7 @@ export class Game implements GameContext {
   readonly hud: Hud
   readonly wrist: WristComputer
   readonly desktop: DesktopControls
-  readonly record: RunRecord = { whoShotFirst: null, clayHits: 0, clayShots: 0 }
+  readonly record: RunRecord = { whoShotFirst: null, clayHits: 0, clayShots: 0, bullseyeBeforeBattle: false }
   stage: Stage | null = null
 
   private readonly timer = new THREE.Timer()

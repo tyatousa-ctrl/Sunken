@@ -7,7 +7,10 @@ import { AttackSequence } from '../intro/AttackSequence'
 import { ATTACK_SECONDS, formatClock, railsOpen, secondsLeft } from '../intro/attackTimeline'
 import { ClayRange } from '../intro/ClayRange'
 import { Crew } from '../intro/Crew'
-import { GearRack, type GearPiece } from '../intro/GearRack'
+import { BARREL_POSITION, BeerBarrel } from '../intro/BeerBarrel'
+import { BOARD_POSITION, DartBoardArea, THROW_DISTANCE } from '../intro/DartBoard'
+import { DrunkState } from '../intro/drunk'
+import { GearRack, TABLE_POSITION, type GearPiece } from '../intro/GearRack'
 import { Shotgun } from '../intro/Shotgun'
 import { AboveWater } from '../world/above/Coast'
 import { BOW_Z, CABIN_FRONT_Z, DECK_Y, Galleon, STERN_Z, halfWidthAt } from '../world/ship/Galleon'
@@ -26,13 +29,15 @@ interface Obstacle {
   r: number
 }
 
-/** Deck obstacles (ship-local circles): masts, the captain's table, the gear rack, the thrower. */
+/** Deck obstacles (ship-local circles): masts, table, gear rack, thrower, beer barrel, dart rack. */
 const OBSTACLES: Obstacle[] = [
   { x: 0, z: 0, r: 0.45 },
   { x: 0, z: -8, r: 0.45 },
-  { x: -1.4, z: 7.2, r: 0.75 },
+  { x: TABLE_POSITION.x, z: TABLE_POSITION.z, r: 0.75 },
   { x: -(halfWidthAt(1.6) - 0.45), z: 1.6, r: 0.5 },
   { x: halfWidthAt(6.2) - 0.5, z: 6.2, r: 0.45 },
+  { x: BARREL_POSITION.x, z: BARREL_POSITION.z, r: 0.45 },
+  { x: -2.35, z: BOARD_POSITION.z - THROW_DISTANCE - 0.1, r: 0.15 },
 ]
 
 // Milestone 3: golden hour on the galleon's deck. Clay shooting is the fake-out; a stray pellet into
@@ -53,6 +58,10 @@ export class IntroStage implements Stage {
   private range!: ClayRange
   private crew!: Crew
   private gear!: GearRack
+  private barrel!: BeerBarrel
+  private darts!: DartBoardArea
+  private readonly drunk = new DrunkState()
+  private baseFog = { near: 0, far: 0 }
   private attack: AttackSequence | null = null
   private phase: Phase = 'fakeout'
   private fakeoutTime = 0
@@ -88,8 +97,28 @@ export class IntroStage implements Stage {
     this.crew = new Crew(this.ship, this.root)
     this.gear = new GearRack(this.ship, this.grab, game.camera, game.audio, (hand) => this.grab.drop(hand))
     this.gear.onChange = (piece) => this.onGear(piece)
+    this.barrel = new BeerBarrel(this.ship, this.grab, {
+      audio: game.audio,
+      beer: this.splash,
+      camera: game.camera,
+      onDrink: (amount) => this.onDrink(amount),
+    })
+    const walk = this.walkEnvironment()
+    this.darts = new DartBoardArea(this.root, this.ship, this.grab, [{ name: 'You', color: '#e8b930' }], {
+      audio: game.audio,
+      debris: this.debris,
+      ground: walk.groundHeight,
+      scatter: () => this.drunk.effects().dartScatter,
+      onBullseye: () => {
+        if (this.phase !== 'fakeout' || game.record.bullseyeBeforeBattle) return
+        game.record.bullseyeBeforeBattle = true
+        game.hud.say('Achievement: Bullseye Before Battle!', 4)
+      },
+    })
+    const fog = game.scene.fog as THREE.Fog
+    this.baseFog = { near: fog.near, far: fog.far }
 
-    game.player.enter(this.walkEnvironment(), new THREE.Vector3(0, DECK_Y, 3), Math.PI)
+    game.player.enter(walk, new THREE.Vector3(0, DECK_Y, 3), Math.PI)
     game.audio.setEnvironment('air')
     game.wrist.setVisible(false)
     game.vignette.setMask(false)
@@ -103,6 +132,8 @@ export class IntroStage implements Stage {
     this.gear.update()
     this.grab.update(dt, game.hands, game.player.physics.velocity, game.rig)
     this.range.update(dt)
+    this.darts.update(dt, game.hands)
+    this.updateDrunk(dt)
     this.crew.update(dt, elapsed)
     this.ship.update(elapsed)
     this.enemy.update(elapsed)
@@ -118,6 +149,10 @@ export class IntroStage implements Stage {
 
   exit(): void {
     this.game.hud.clear()
+    this.game.vignette.drunk = 0
+    this.game.vignette.blackout = 0
+    this.game.player.frozen = false
+    this.game.player.setDrunk(0, 1)
     this.game.scene.remove(this.root)
     disposeTree(this.root)
   }
@@ -130,13 +165,18 @@ export class IntroStage implements Stage {
     game.record.whoShotFirst = shooter
     game.audio.silence(1.2)
     game.hud.clear()
+    // Beer and darts are over; everybody's needed now.
+    for (const mug of this.barrel.mugs) mug.dropNow()
     this.attack = new AttackSequence(this.root, this.ship, this.enemy, this.broadsideYaw, {
       audio: game.audio,
       smoke: this.smoke,
       fire: this.fire,
       debris: this.debris,
       splash: this.splash,
-      onScoreboardHit: () => this.range.breakBoard(),
+      onScoreboardHit: () => {
+        this.range.breakBoard()
+        this.darts.interrupt()
+      },
       hands: () => game.hands,
       head: () => game.camera.getWorldPosition(this.v2),
     })
@@ -213,6 +253,59 @@ export class IntroStage implements Stage {
     }
   }
 
+  // ---- Beer ------------------------------------------------------------------------------------
+
+  private onDrink(amount: number): void {
+    if (this.drunk.drink(amount) === 'blackout') this.passOut()
+  }
+
+  private passOut(): void {
+    const { game } = this
+    game.player.frozen = true
+    for (const hand of game.hands) {
+      if (hand.held) {
+        hand.held.release(hand, new THREE.Vector3())
+        hand.held = null
+      }
+    }
+    game.audio.silence(3)
+    game.hud.say('...', 3)
+    // Can't take your darts turn while out cold.
+    this.darts.skipTurn()
+  }
+
+  private updateDrunk(dt: number): void {
+    const event = this.drunk.update(dt)
+    const { game } = this
+    if (this.drunk.passedOut) {
+      const t = this.drunk.blackout
+      // Fade to black quickly, hold, then fade back in over the last second.
+      game.vignette.blackout = Math.min(1, (3 - t) / 0.5, t / 1)
+    } else if (game.vignette.blackout > 0) {
+      game.vignette.blackout = 0
+    }
+    if (event === 'wake') {
+      game.player.frozen = false
+      game.hud.say('You come round on the deck. Head clear, somehow.', 4)
+    }
+    this.applyDrunkEffects()
+  }
+
+  private applyDrunkEffects(): void {
+    const fx = this.drunk.effects()
+    const { game } = this
+    game.player.setDrunk(fx.walkDrift, fx.walkSpeed)
+    for (const gun of this.guns) gun.sway = fx.aimSway
+    const visual = game.settings.drunkFx
+    const fog = game.scene.fog as THREE.Fog | null
+    if (fog && 'far' in fog && this.baseFog.far > 0) {
+      const scale = visual ? fx.fogScale : 1
+      fog.far = this.baseFog.far * scale
+      fog.near = Math.min(this.baseFog.near * scale, fog.far * 0.3)
+    }
+    game.vignette.drunk = visual ? fx.tint : 0
+  }
+
   // ---- Attack -----------------------------------------------------------------------------------
 
   private updateAttack(dt: number, elapsed: number): void {
@@ -274,6 +367,9 @@ export class IntroStage implements Stage {
     const { game } = this
     // Washed off unready? The sea's kind: whatever was missing is on you now.
     this.gear.equipAll()
+    // The cold sea sobers you up.
+    this.drunk.sober()
+    this.applyDrunkEffects()
     game.audio.play('bigSplash')
     game.hud.clear()
     game.goTo(() => new DiveStage(game, 'shipwreck'))

@@ -8,7 +8,7 @@ Tracks milestones from `BRIEF.md`, decisions, and placeholders to replace later.
 |---|---|---|
 | 1 | Setup: Vite + Three.js + WebXR "Enter VR", controllers visible, FPS overlay, server hosting decided | Built; waiting for Quest test |
 | 2 | Movement sandbox: fog, caustics, arm swimming, bubble jets, air gauge, grab, comfort vignette | Built and tested in an emulated Quest 3; waiting for real-headset test and tuning |
-| 3 | Intro sequence: galleon deck, clay-shooting fake-out, cannon attack, gear up, sinking, dive transition | Built and tested end to end in an emulated Quest 3; beer barrel and darts deferred (see below) |
+| 3 | Intro sequence: galleon deck, clay-shooting fake-out, beer barrel, darts, cannon attack, gear up, sinking, dive transition | Built and tested end to end in an emulated Quest 3; waiting for real-headset test |
 | 4 | Level 1 + systems | Not started |
 | 5 | Multiplayer | Not started |
 | 6 | Bots + all classes + magic | Not started |
@@ -82,14 +82,25 @@ The game now starts on the galleon's deck instead of the sandbox (`?stage=sandbo
 
 **How it was tested**
 
-- `npm test`: 29 unit tests, including the reload rules and the attack timeline (tilt under 10°, deterministic volleys, rails opening, countdown).
+- `npm test`: 45 unit tests, including the reload rules, the attack timeline (tilt under 10°, deterministic volleys, rails opening, countdown), drink tiers and blackout, dart board scoring (segment order and edges, rings, bulls) and the darts rules (301/501 busts and double-out, turns, skipped turns, Around the Clock).
+- Beer and darts in the emulated Quest: fill a mug at the tap, drink it (the counter and haze go up), effects at 7.5 drinks (fog, gun sway, haze), blackout and waking up sober, grab a dart from the rack and throw it through the real release path into the bull (slate: 301 → 251, BULL), and the attack knocking the board off the wall with the darts left on the deck.
 - End-to-end run in an emulated Quest 3 (IWER): pick up a gun at the rack, Salvo pulls a clay, a pellet aimed at a clay breaks it, a real trigger pull aimed at the merchant starts the attack, the flag swaps and she turns, the first ball destroys the scoreboard, the crew panics and the checklist appears, tank / mask / fins / map all equip through real grab gestures, the rails open, walking off the side drops you into the water and the dive stage starts with the galleon sinking. No page errors.
 - Desktop run: pick up, fire and reload with the keyboard.
 - Not yet tried on a real headset.
 
 **Performance so far**: 50–60 draw calls and ~25–50k triangles on deck (static ship parts and the distant enemy are merged into a few meshes).
 
-**Deferred from the fake-out, to do next**: the beer barrel (and drunk effects) and the dart board. They're self-contained, so they slot in without touching the flow above. The spyglass nudge is also left out for now; the other three nudges are in.
+**Beer barrel** (`intro/BeerBarrel.ts`, `intro/drunk.ts`): a barrel with a brass tap by the port rail near the stern, four pewter mugs on top. Hold a mug under the tap and pull the trigger to fill it (foam rises); raise it to your mouth (within 15 cm) and tip it back to drink, with gulps and a light buzz. Turn it upside down away from your face and it pours out. One full mug = one drink; the counter is hidden and wears off by one drink per 45 s.
+- 1–3 drinks: light fog and a warm haze. 4–6: foggier, and a wobble is added to your walking (only while you're pushing the stick, never on its own). 7–9: heavy fog, slower walking, more wobble, and a held blunderbuss sways (half as much held two-handed).
+- 10 drinks: blackout. The view fades to black, sound drops out, anything you hold goes back, and you can't move for 3 s; you come round sober. A blackout skips your darts turn.
+- The camera is never moved, tilted or spun by any of this: it's fog, colour and input wobble only. "Drunk visual effects" on the start screen turns the fog and haze off (the wobble stays).
+- Going into the sea sobers you up.
+
+**Dart board** (`intro/DartBoard.ts`, `intro/darts/`): on the cabin wall port of the door at regulation height, a slate scoreboard beside it, a throw line at 2.37 m, and a rack with three darts. Grab a dart, throw it with the controller's release velocity (a small boost, plus a gravity arc); point-first sticks, flat bounces off. Standard board scoring (singles, doubles, trebles, 25, bull 50). Default 301 with double-out; the blue button under the slate cycles 301 / 501 / Around the Clock, the red one toggles double-out. The slate shows remaining score, the last three darts and whose turn it is. Darts return to the rack after each turn, or if they fall on the deck or overboard. Drink adds scatter to throws. A bullseye before the attack earns "Bullseye Before Battle". When the first cannonball lands, the darts fall, the board drops off the wall, and the slate shows the final scores for 2 s before it breaks.
+
+The deck layout changed to fit them: the captain's table (with the map) moved forward to the port side, and the port cabin window gave way to the slate.
+
+Still not in from the fake-out: the spyglass nudge (the other three nudges are in), the "Pull!" crew voice (subtitles only), slurred voice chat (no voice chat until Milestone 5) and double vision (would need a post-processing pass that costs frame rate on Quest; fog and haze stand in for it). Bots at the barrel and the board come with Milestone 6.
 
 ## Decisions
 
@@ -97,7 +108,9 @@ The game now starts on the galleon's deck instead of the sandbox (`?stage=sandbo
 - **2026-09-29 — Macaly's role.** Macaly is the asset pipeline only: find licensed models, import them with `upload_file` into the private "Sunken Sicily" Macaly app's media library, and record each URL and license in `client/src/assets/manifest.json`. The game never loads assets except through the manifest.
 - **2026-09-29 — Tests.** Unit tests use Node's built-in test runner through `tsx` (`npm test`). Installing vitest failed on an npm peer-dependency bug with Vite 8, and the built-in runner needs no extra dependency.
 - **2026-09-29 — Physics engine.** Milestone 2 uses hand-written swim physics and sphere colliders for rocks, which is enough for open water. Rapier gets added when the wrecks need real mesh collisions (Milestone 4).
-- **2026-09-29 — Intro scope.** Beer barrel and darts are deferred so Milestone 3 plays end to end first (the brief's "playable vertical slice" rule). Guns never get lost overboard: dropped or thrown, they glide back to the rack.
+- **2026-09-29 — Intro scope.** Beer barrel and darts were built after the main intro flow so it played end to end first. Guns never get lost overboard: dropped or thrown, they glide back to the rack.
+- **2026-09-29 — Darts mode.** The brief's "First to 501" is implemented as standard 501 counting down (first to reach zero wins).
+- **2026-09-29 — Drunk effects and comfort.** No double vision: it needs a full-screen post-processing pass that would cost frame rate on Quest. Fog, an amber haze and input wobble carry the effect instead. Walking wobble only applies while the stick is pushed, so you never move on your own.
 - **2026-09-29 — Comfort on a sinking ship.** The player's view stays level while the deck tilts under them; only the ground height follows the deck. Cannon hits shake the ship's visuals, not the player.
 - **2026-09-29 — Repo layout.** One root `package.json` with `client/` (Vite root) and `server/`, so Render builds and runs everything with `npm run build` / `npm start`.
 

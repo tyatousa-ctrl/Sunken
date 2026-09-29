@@ -32,8 +32,13 @@ export class Player {
   lastResult: SwimResult = { thrust: [], stroking: false, jetting: false }
   env: PlayerEnvironment | null = null
 
+  /** No movement or turning (passed out). */
+  frozen = false
   private turnMode: TurnMode
   private seated: boolean
+  private drunkDrift = 0
+  private drunkSpeed = 1
+  private clock = 0
   private snapArmed = true
   private respawning = 0
   private exhaleTimer = 0
@@ -87,6 +92,12 @@ export class Player {
     this.seated = seated
   }
 
+  /** Drunk walking: a wobble added to stick input (only while you're moving) and a speed multiplier. */
+  setDrunk(drift: number, speed: number): void {
+    this.drunkDrift = drift
+    this.drunkSpeed = speed
+  }
+
   get speed(): number {
     return this.env?.kind === 'walk' ? Math.hypot(this.physics.velocity.x, this.physics.velocity.z) : this.physics.velocity.length()
   }
@@ -104,6 +115,7 @@ export class Player {
   update(dt: number, inXr: boolean, desktop: DesktopControls): void {
     const env = this.env
     if (!env) return
+    this.clock += dt
     if (env.kind === 'swim') this.updateSwim(dt, inXr, desktop, env)
     else this.updateWalk(dt, inXr, desktop, env)
   }
@@ -126,7 +138,7 @@ export class Player {
       if (left) [x, y] = deadzone(left.stick)
       // A/X jumps, unless that hand is busy (A/X reloads a held gun).
       jump = this.hands.some((h) => h.connected && h.primaryPressed && !h.held)
-      if (right) this.turn(dt, right.stick.x)
+      if (right && !this.frozen) this.turn(dt, right.stick.x)
     } else {
       x = desktop.move.x
       y = desktop.move.y
@@ -135,8 +147,18 @@ export class Player {
       desktop.yawDelta = 0
     }
 
+    if (this.frozen) {
+      x = y = 0
+      jump = false
+    }
+    // Drunk: the stick wanders a little, but never moves you if you aren't pushing it.
+    if (this.drunkDrift > 0 && Math.hypot(x, y) > 0.1) {
+      x += Math.sin(this.clock * 0.9) * this.drunkDrift + Math.sin(this.clock * 2.3) * this.drunkDrift * 0.4
+      y += Math.cos(this.clock * 0.7) * this.drunkDrift * 0.6
+    }
+    const speed = WALK_SPEED * this.drunkSpeed
     const vel = this.physics.velocity
-    vel.copy(this.forward).multiplyScalar(-y * WALK_SPEED).addScaledVector(this.right, x * WALK_SPEED)
+    vel.copy(this.forward).multiplyScalar(-y * speed).addScaledVector(this.right, x * speed)
     this.rig.position.addScaledVector(vel, dt)
 
     // Keep the head inside the walkable area (rails, cabin walls).

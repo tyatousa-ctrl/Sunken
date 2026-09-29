@@ -1,0 +1,514 @@
+import * as THREE from 'three'
+import type { AudioSystem } from '../audio/AudioSystem'
+import type { Particles } from '../fx/Particles'
+import type { Hand } from '../input/Hand'
+import type { GrabSystem, Interactable } from '../interaction/GrabSystem'
+import { CABIN_FRONT_Z, DECK_Y, type Galleon } from '../world/ship/Galleon'
+import { DartsGame, MODE_NAMES, type DartsMode } from './darts/DartsGame'
+import { MISS, RADII, SEGMENTS, scoreAt, type DartScore } from './darts/scoring'
+
+/** Board centre, ship-local: on the cabin wall, port of the door, at regulation height (1.73 m). */
+export const BOARD_POSITION = new THREE.Vector3(-1.3, DECK_Y + 1.73, CABIN_FRONT_Z - 0.03)
+/** Regulation oche distance from the board face. */
+export const THROW_DISTANCE = 2.37
+const RACK_POSITION = new THREE.Vector3(-2.35, DECK_Y, BOARD_POSITION.z - THROW_DISTANCE - 0.1)
+const GRAVITY = 9.8
+/** VR throws tend to feel weak without a small boost. */
+const THROW_BOOST = 1.15
+const DESKTOP_THROW_SPEED = 7
+const RETURN_DELAY = 1.6
+const MODES: DartsMode[] = ['301', '501', 'clock']
+
+export interface DartsContext {
+  audio: AudioSystem
+  debris: Particles
+  /** Deck height under a world point, or null over the water. */
+  ground: (x: number, z: number) => number | null
+  /** Extra random spread on throws, in degrees (grows with drink). */
+  scatter: () => number
+  onBullseye: () => void
+}
+
+type DartState = 'rack' | 'held' | 'flying' | 'stuck' | 'falling' | 'down'
+
+// The dart board on the cabin wall: the board, a slate scoreboard, a throw line, a rack with three
+// darts per player colour, and two buttons (game mode, double-out) you press with a hand.
+export class DartBoardArea {
+  readonly game: DartsGame
+  readonly board = new THREE.Group()
+  readonly darts: Dart[] = []
+  private readonly slateCanvas = document.createElement('canvas')
+  private readonly slateTexture: THREE.CanvasTexture
+  private readonly slate: THREE.Mesh
+  private readonly buttons: { mesh: THREE.Mesh; action: () => void }[] = []
+  private buttonCooldown = 0
+  private returnTimer = 0
+  interrupted = false
+  private slateBreakTimer = -1
+  private boardFall: THREE.Vector3 | null = null
+  private readonly v = new THREE.Vector3()
+
+  constructor(
+    readonly root: THREE.Group,
+    ship: Galleon,
+    grab: GrabSystem,
+    players: { name: string; color: string }[],
+    private readonly ctx: DartsContext,
+  ) {
+    this.game = new DartsGame(players)
+
+    // Board faces the deck (local +z is the face; the wall is behind it).
+    this.board.position.copy(BOARD_POSITION)
+    this.board.rotation.y = Math.PI
+    const face = new THREE.Mesh(new THREE.CircleGeometry(RADII.board, 48), new THREE.MeshStandardMaterial({ map: makeBoardTexture(), roughness: 0.9 }))
+    face.position.z = 0.02
+    const back = new THREE.Mesh(new THREE.CylinderGeometry(RADII.board + 0.01, RADII.board + 0.01, 0.04, 40), new THREE.MeshStandardMaterial({ color: 0x1b1b1b, roughness: 0.9 }))
+    back.rotation.x = Math.PI / 2
+    this.board.add(back, face)
+    ship.shake.add(this.board)
+
+    // Slate scoreboard beside the board.
+    this.slateCanvas.width = 512
+    this.slateCanvas.height = 400
+    this.slateTexture = new THREE.CanvasTexture(this.slateCanvas)
+    this.slateTexture.colorSpace = THREE.SRGBColorSpace
+    this.slate = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.55), new THREE.MeshStandardMaterial({ map: this.slateTexture, roughness: 1 }))
+    this.slate.position.set(BOARD_POSITION.x - 1.05, DECK_Y + 1.6, CABIN_FRONT_Z - 0.02)
+    this.slate.rotation.y = Math.PI
+    ship.shake.add(this.slate)
+
+    // Two round buttons under the slate: mode and double-out.
+    const buttonMaterial = (color: number) => new THREE.MeshStandardMaterial({ color, roughness: 0.5 })
+    const modeButton = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.03, 16), buttonMaterial(0x2f5e9e))
+    const doubleButton = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.03, 16), buttonMaterial(0xc8322b))
+    for (const [mesh, dx] of [[modeButton, -0.15], [doubleButton, 0.15]] as const) {
+      mesh.rotation.x = Math.PI / 2
+      mesh.position.set(this.slate.position.x + dx, DECK_Y + 1.22, CABIN_FRONT_Z - 0.03)
+      ship.shake.add(mesh)
+    }
+    this.buttons.push(
+      { mesh: modeButton, action: () => this.cycleMode() },
+      { mesh: doubleButton, action: () => this.toggleDoubleOut() },
+    )
+
+    // Throw line (oche) painted on the deck.
+    const oche = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.005, 0.04), new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 1 }))
+    oche.position.set(BOARD_POSITION.x, DECK_Y + 0.003, BOARD_POSITION.z - THROW_DISTANCE)
+    ship.shake.add(oche)
+
+    // Rack: a post with a tray; each player colour gets three darts.
+    const rack = new THREE.Group()
+    rack.position.copy(RACK_POSITION)
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a20, roughness: 0.85 })
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.0, 0.06), wood)
+    post.position.y = 0.5
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.14), wood)
+    tray.position.y = 1.0
+    rack.add(post, tray)
+    ship.shake.add(rack)
+    players.forEach((player, p) => {
+      for (let i = 0; i < 3; i++) {
+        const slot = new THREE.Vector3(-0.1 + i * 0.1, 1.03, -0.03 + p * 0.03)
+        const dart = new Dart(rack, slot, player.color, this)
+        this.darts.push(grab.add(dart))
+      }
+    })
+    this.drawSlate()
+  }
+
+  get audio(): AudioSystem {
+    return this.ctx.audio
+  }
+
+  scatter(): number {
+    return this.ctx.scatter()
+  }
+
+  ground(x: number, z: number): number | null {
+    return this.ctx.ground(x, z)
+  }
+
+  /** A dart finished: stuck in the board, or missed (wall, deck, overboard). */
+  scoreDart(score: DartScore, thrower: Hand | null): void {
+    if (this.interrupted) return
+    if (score.points === 50) this.ctx.onBullseye()
+    thrower?.pulse(score.points > 0 ? 0.6 : 0.2, 50)
+    const result = this.game.throw(score)
+    this.drawSlate()
+    if (result.turnOver) this.returnTimer = RETURN_DELAY
+    if (result.won) this.returnTimer = 4
+  }
+
+  /** Blacked-out player loses their turn. */
+  skipTurn(): void {
+    if (this.interrupted) return
+    this.game.skipTurn()
+    this.returnTimer = RETURN_DELAY
+    this.drawSlate()
+  }
+
+  /** First cannonball: darts fall, the board drops off the wall, the slate shows final scores, then breaks. */
+  interrupt(): void {
+    if (this.interrupted) return
+    this.interrupted = true
+    this.game.message = 'Final scores'
+    this.drawSlate()
+    this.slateBreakTimer = 2
+    for (const d of this.darts) d.knockDown()
+    this.root.attach(this.board)
+    this.boardFall = new THREE.Vector3(0, 0, 0)
+  }
+
+  update(dt: number, hands: Hand[]): void {
+    this.buttonCooldown = Math.max(0, this.buttonCooldown - dt)
+    if (!this.interrupted) {
+      for (const b of this.buttons) {
+        if (this.buttonCooldown > 0) break
+        b.mesh.getWorldPosition(this.v)
+        const hand = hands.find((h) => h.connected && !h.held && h.worldPos(new THREE.Vector3()).distanceTo(this.v) < 0.08)
+        if (hand) {
+          hand.pulse(0.4, 30)
+          this.ctx.audio.play('click', this.v)
+          this.buttonCooldown = 0.8
+          b.action()
+        }
+      }
+      if (this.returnTimer > 0) {
+        this.returnTimer -= dt
+        if (this.returnTimer <= 0) {
+          if (this.game.winner) this.game.reset()
+          for (const d of this.darts) d.returnToRack()
+          this.drawSlate()
+        }
+      }
+    }
+    if (this.slateBreakTimer > 0) {
+      this.slateBreakTimer -= dt
+      if (this.slateBreakTimer <= 0) {
+        this.slate.getWorldPosition(this.v)
+        this.slate.visible = false
+        this.ctx.debris.emit({ position: this.v, spread: 3, color: 0x2b2f2c, size: 0.08, life: 1.5, count: 30 })
+        this.ctx.audio.play('crack', this.v)
+      }
+    }
+    if (this.boardFall) this.updateBoardFall(dt)
+  }
+
+  private updateBoardFall(dt: number): void {
+    const fall = this.boardFall!
+    fall.y -= GRAVITY * dt
+    this.board.position.addScaledVector(fall, dt)
+    this.board.rotation.x += dt * 2
+    const floor = this.ctx.ground(this.board.position.x, this.board.position.z)
+    if (floor !== null && this.board.position.y < floor + 0.05) {
+      this.board.position.y = floor + 0.05
+      this.board.rotation.set(-Math.PI / 2, 0, 0.3)
+      this.boardFall = null
+      this.ctx.audio.play('thud', this.board.position)
+    } else if (this.board.position.y < -5) {
+      this.boardFall = null
+    }
+  }
+
+  private cycleMode(): void {
+    const next = MODES[(MODES.indexOf(this.game.mode) + 1) % MODES.length]
+    this.game.reset(next)
+    for (const d of this.darts) d.returnToRack()
+    this.drawSlate()
+  }
+
+  private toggleDoubleOut(): void {
+    this.game.reset(this.game.mode, !this.game.doubleOut)
+    for (const d of this.darts) d.returnToRack()
+    this.drawSlate()
+  }
+
+  private drawSlate(): void {
+    const ctx = this.slateCanvas.getContext('2d')!
+    const g = this.game
+    ctx.fillStyle = '#2b2f2c'
+    ctx.fillRect(0, 0, 512, 400)
+    ctx.strokeStyle = '#8a5a2b'
+    ctx.lineWidth = 16
+    ctx.strokeRect(8, 8, 496, 384)
+    ctx.fillStyle = '#efeee6'
+    ctx.textAlign = 'center'
+    ctx.font = 'bold 40px Georgia, serif'
+    ctx.fillText(`Darts: ${MODE_NAMES[g.mode]}`, 256, 60)
+    ctx.font = '22px Georgia, serif'
+    ctx.fillStyle = '#c9c8bd'
+    ctx.fillText(g.mode === 'clock' ? 'Hit 1 to 20 in order, then the bull' : `Double out: ${g.doubleOut ? 'on' : 'off'}`, 256, 92)
+    g.players.forEach((p, i) => {
+      const y = 150 + i * 56
+      ctx.textAlign = 'left'
+      ctx.fillStyle = p.color
+      ctx.beginPath()
+      ctx.arc(46, y - 10, 12, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#efeee6'
+      ctx.font = `${i === g.current && !g.winner ? 'bold ' : ''}32px Georgia, serif`
+      ctx.fillText(`${i === g.current && !g.winner ? '▸ ' : ''}${p.name}`, 66, y)
+      ctx.textAlign = 'right'
+      ctx.fillText(g.mode === 'clock' ? (p.target > 25 ? 'done' : p.target === 25 ? 'bull' : `→ ${p.target}`) : String(p.remaining), 330, y)
+      ctx.font = '24px Georgia, serif'
+      ctx.fillStyle = '#c9c8bd'
+      ctx.fillText(p.lastDarts.slice(-3).join('  '), 488, y)
+    })
+    ctx.textAlign = 'center'
+    ctx.font = 'bold 30px Georgia, serif'
+    ctx.fillStyle = '#ffd166'
+    if (g.message) ctx.fillText(g.message, 256, 330)
+    ctx.font = '18px Georgia, serif'
+    ctx.fillStyle = '#9e9d93'
+    ctx.fillText('blue button: game mode  ·  red button: double out', 256, 372)
+    this.slateTexture.needsUpdate = true
+  }
+}
+
+class Dart implements Interactable {
+  readonly object = new THREE.Group()
+  state: DartState = 'rack'
+  private readonly velocity = new THREE.Vector3()
+  private readonly materials: THREE.MeshStandardMaterial[] = []
+  private readonly rack: THREE.Object3D
+  private readonly slot: THREE.Vector3
+  private thrower: Hand | null = null
+  private scored = false
+  private downTimer = 0
+  private readonly prevLocal = new THREE.Vector3()
+  private readonly local = new THREE.Vector3()
+  private readonly q = new THREE.Quaternion()
+  private readonly forward = new THREE.Vector3(0, 0, -1)
+  private readonly v = new THREE.Vector3()
+
+  constructor(
+    rack: THREE.Object3D,
+    slot: THREE.Vector3,
+    color: string,
+    private readonly area: DartBoardArea,
+  ) {
+    const brass = new THREE.MeshStandardMaterial({ color: 0xc59a3c, roughness: 0.3, metalness: 0.8 })
+    const steel = new THREE.MeshStandardMaterial({ color: 0xb8bcc0, roughness: 0.25, metalness: 0.9 })
+    const flight = new THREE.MeshStandardMaterial({ color, roughness: 0.6, side: THREE.DoubleSide })
+    this.materials.push(brass, flight)
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.003, 0.035, 6), steel)
+    tip.rotation.x = -Math.PI / 2
+    tip.position.z = -0.075
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.05, 8), brass)
+    barrel.rotation.x = Math.PI / 2
+    barrel.position.z = -0.035
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0025, 0.0025, 0.045, 6), steel)
+    shaft.rotation.x = Math.PI / 2
+    shaft.position.z = 0.012
+    this.object.add(tip, barrel, shaft)
+    for (const angle of [0, Math.PI / 2]) {
+      const fin = new THREE.Mesh(new THREE.PlaneGeometry(0.03, 0.035), flight)
+      fin.position.z = 0.045
+      fin.rotation.set(-Math.PI / 2, 0, angle)
+      this.object.add(fin)
+    }
+    this.rack = rack
+    this.slot = slot
+    this.returnToRack()
+  }
+
+  grabGap(point: THREE.Vector3): number {
+    if (this.state !== 'rack' && this.state !== 'down' && this.state !== 'stuck') return Infinity
+    return point.distanceTo(this.object.getWorldPosition(this.v)) - 0.05
+  }
+
+  grab(hand: Hand): void {
+    this.state = 'held'
+    hand.ray.add(this.object)
+    this.object.position.set(0, 0, -0.02)
+    this.object.quaternion.identity()
+    hand.pulse(0.15, 15)
+  }
+
+  release(hand: Hand, throwVelocity: THREE.Vector3): void {
+    if (this.state !== 'held') return
+    this.area.root.attach(this.object)
+    this.thrower = hand
+    this.scored = false
+    if (hand.virtual) {
+      // Desktop: lob it at whatever you're looking at, about oche distance away.
+      const eye = hand.ray.parent!
+      const target = eye.getWorldPosition(new THREE.Vector3()).addScaledVector(eye.getWorldDirection(new THREE.Vector3()), THROW_DISTANCE)
+      const from = this.object.getWorldPosition(this.v)
+      const flight = THROW_DISTANCE / DESKTOP_THROW_SPEED
+      this.velocity.subVectors(target, from).divideScalar(flight)
+      this.velocity.y += 0.5 * GRAVITY * flight
+    } else {
+      this.velocity.copy(throwVelocity).multiplyScalar(THROW_BOOST)
+    }
+    // Scatter: a small random twist that grows with drink.
+    const scatter = THREE.MathUtils.degToRad(this.area.scatter())
+    if (scatter > 0) {
+      const axis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize()
+      this.velocity.applyAxisAngle(axis, (Math.random() - 0.5) * 2 * scatter)
+    }
+    if (this.velocity.length() < 1.5) {
+      // Barely thrown: just drops.
+      this.state = 'falling'
+      return
+    }
+    this.state = 'flying'
+    this.area.board.worldToLocal(this.prevLocal.copy(this.object.getWorldPosition(this.v)))
+  }
+
+  setHighlight(on: boolean): void {
+    for (const m of this.materials) m.emissive.copy(on ? new THREE.Color(0x2e7896) : new THREE.Color(0x000000))
+  }
+
+  /** Back to its slot in the rack. */
+  returnToRack(): void {
+    if (this.state === 'held') return
+    this.rack.add(this.object)
+    this.object.position.copy(this.slot)
+    this.object.rotation.set(0, 0, 0)
+    this.state = 'rack'
+  }
+
+  /** The attack shakes it off the board or out of the rack. */
+  knockDown(): void {
+    if (this.state === 'held') return
+    this.area.root.attach(this.object)
+    this.velocity.set((Math.random() - 0.5) * 2, 0.5, (Math.random() - 0.5) * 2)
+    this.state = 'falling'
+  }
+
+  update(dt: number): void {
+    if (this.state === 'flying') this.fly(dt)
+    else if (this.state === 'falling') this.fall(dt)
+    else if (this.state === 'down' && !this.area.interrupted) {
+      // Fallen darts respawn in the rack; once the attack starts they stay where they fell.
+      this.downTimer -= dt
+      if (this.downTimer <= 0) this.returnToRack()
+    }
+  }
+
+  private fly(dt: number): void {
+    // Exact ballistic step (independent of frame rate).
+    const pos = this.object.position.addScaledVector(this.velocity, dt)
+    pos.y -= 0.5 * GRAVITY * dt * dt
+    this.velocity.y -= GRAVITY * dt
+    this.object.quaternion.setFromUnitVectors(this.forward, this.v.copy(this.velocity).normalize())
+
+    // Crossing the board / cabin-wall plane from the front.
+    this.area.board.worldToLocal(this.local.copy(this.object.getWorldPosition(this.v)))
+    if (this.prevLocal.z > 0.02 && this.local.z <= 0.02) {
+      const t = (this.prevLocal.z - 0.02) / (this.prevLocal.z - this.local.z)
+      const x = this.prevLocal.x + (this.local.x - this.prevLocal.x) * t
+      const y = this.prevLocal.y + (this.local.y - this.prevLocal.y) * t
+      const dirLocal = this.v.copy(this.velocity).normalize().transformDirection(new THREE.Matrix4().copy(this.area.board.matrixWorld).invert())
+      const pointFirst = -dirLocal.z > 0.55
+      if (Math.hypot(x, y) <= RADII.board && pointFirst) {
+        this.area.board.add(this.object)
+        this.object.position.set(x, y, 0.06)
+        this.object.quaternion.setFromUnitVectors(this.forward, new THREE.Vector3(0, 0, -1))
+        this.state = 'stuck'
+        this.area.audio.play('dartHit', this.object.getWorldPosition(this.v))
+        this.finish(scoreAt(x, y))
+        return
+      }
+      // Hit flat, or hit the cabin wall around the board: bounces off and drops.
+      // (Beyond the cabin's sides and roof there's no wall, so the dart flies on.)
+      const onWall = Math.abs(x) < 3.4 && y > -BOARD_POSITION.y + DECK_Y && y < 0.9
+      if (onWall || Math.hypot(x, y) <= RADII.board) {
+        this.velocity.multiplyScalar(-0.2)
+        this.state = 'falling'
+        this.area.audio.play('thud', pos, 0.5)
+      }
+    }
+    this.prevLocal.copy(this.local)
+    this.checkGround()
+  }
+
+  private fall(dt: number): void {
+    this.velocity.y -= GRAVITY * dt
+    this.object.position.addScaledVector(this.velocity, dt)
+    this.object.rotation.x += dt * 6
+    this.checkGround()
+  }
+
+  private checkGround(): void {
+    const p = this.object.getWorldPosition(this.v)
+    const floor = this.area.ground(p.x, p.z)
+    if (floor !== null && p.y <= floor + 0.01) {
+      this.object.position.y += floor + 0.01 - p.y
+      this.object.rotation.set(0, Math.random() * 6, Math.PI / 2)
+      this.state = 'down'
+      this.downTimer = RETURN_DELAY
+      this.finish(MISS)
+    } else if (p.y < -1) {
+      // Overboard: straight back to the rack.
+      this.state = 'down'
+      this.downTimer = 0
+      this.finish(MISS)
+    }
+  }
+
+  private finish(score: DartScore): void {
+    if (this.scored || !this.thrower) return
+    this.scored = true
+    this.area.scoreDart(score, this.thrower)
+    this.thrower = null
+  }
+}
+
+function makeBoardTexture(): THREE.CanvasTexture {
+  const size = 1024
+  const c = size / 2
+  const px = (metres: number) => (metres / RADII.board) * c
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#141414'
+  ctx.fillRect(0, 0, size, size)
+  const ring = (outer: number, inner: number, colors: [string, string]) => {
+    SEGMENTS.forEach((_, i) => {
+      // Canvas angles run clockwise from +x; segment 20 is centred straight up.
+      const start = ((i * 18 - 9 - 90) * Math.PI) / 180
+      const end = start + (18 * Math.PI) / 180
+      ctx.beginPath()
+      ctx.arc(c, c, px(outer), start, end)
+      ctx.arc(c, c, px(inner), end, start, true)
+      ctx.closePath()
+      ctx.fillStyle = colors[i % 2]
+      ctx.fill()
+    })
+  }
+  ring(RADII.doubleOut, RADII.doubleIn, ['#c23b2c', '#2e7d3a'])
+  ring(RADII.doubleIn, RADII.trebleOut, ['#1a1a1a', '#efe2c2'])
+  ring(RADII.trebleOut, RADII.trebleIn, ['#c23b2c', '#2e7d3a'])
+  ring(RADII.trebleIn, RADII.outerBull, ['#1a1a1a', '#efe2c2'])
+  ctx.fillStyle = '#2e7d3a'
+  ctx.beginPath()
+  ctx.arc(c, c, px(RADII.outerBull), 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#c23b2c'
+  ctx.beginPath()
+  ctx.arc(c, c, px(RADII.bull), 0, Math.PI * 2)
+  ctx.fill()
+  // Wire and numbers.
+  ctx.strokeStyle = '#b9b9b9'
+  ctx.lineWidth = 2
+  for (const r of [RADII.doubleOut, RADII.doubleIn, RADII.trebleOut, RADII.trebleIn, RADII.outerBull]) {
+    ctx.beginPath()
+    ctx.arc(c, c, px(r), 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  ctx.fillStyle = '#f2f2f2'
+  ctx.font = 'bold 54px Georgia, serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  SEGMENTS.forEach((n, i) => {
+    const a = ((i * 18 - 90) * Math.PI) / 180
+    const r = px((RADII.doubleOut + RADII.board) / 2)
+    ctx.fillText(String(n), c + Math.cos(a) * r, c + Math.sin(a) * r)
+  })
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 8
+  return texture
+}

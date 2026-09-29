@@ -230,11 +230,10 @@ function makeCabin(wood: THREE.Material, dark: THREE.Material, trim: THREE.Mater
   const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.9, 0.08), dark)
   door.position.set(0, DECK_Y + 0.95, CABIN_FRONT_Z - 0.02)
   cabin.add(body, roof, door)
-  for (const x of [-2.2, 2.2]) {
-    const window = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.06), trim)
-    window.position.set(x, DECK_Y + 1.5, CABIN_FRONT_Z - 0.02)
-    cabin.add(window)
-  }
+  // One window to starboard; the port side of the wall holds the dart board and its slate.
+  const window = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.06), trim)
+  window.position.set(2.2, DECK_Y + 1.5, CABIN_FRONT_Z - 0.02)
+  cabin.add(window)
   return cabin
 }
 

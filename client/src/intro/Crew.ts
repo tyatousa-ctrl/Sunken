@@ -13,7 +13,7 @@ const SPECS: CrewSpec[] = [
   { name: 'Salvo', shirt: 0xb23a2e, hat: 'bandana', home: [2.4, 5.2], facing: Math.PI / 2 },
   { name: 'Nino', shirt: 0xe3d7b8, hat: 'tricorn', home: [2.6, -3.5], facing: Math.PI / 2 },
   { name: 'Rosalia', shirt: 0x2f5e9e, hat: 'bandana', home: [-1.2, -6.5], facing: -Math.PI / 2 },
-  { name: 'Turi', shirt: 0x3f6b3a, hat: 'tricorn', home: [-2.2, 5.8], facing: 0.4 },
+  { name: 'Turi', shirt: 0x3f6b3a, hat: 'tricorn', home: [-2.8, 5.4], facing: 0.4 },
 ]
 
 class Sailor {

@@ -13,6 +13,8 @@ export interface RunRecord {
   whoShotFirst: string | null
   clayHits: number
   clayShots: number
+  /** Achievement: a bullseye on the dart board before the attack. */
+  bullseyeBeforeBattle: boolean
 }
 
 /** Shared services a stage can use. */
