@@ -18,11 +18,14 @@ const WHEEL_TURNS = 1.5
 /** Parrot perch and cracker table on the quarterdeck (ship-local, floor level). */
 export const PERCH_SPOT = new THREE.Vector3(-1.6, ROOF_Y, 11.3)
 export const CRACKER_TABLE = new THREE.Vector3(-2.5, ROOF_Y, 10.6)
+/** The swivel gun on its post, starboard of the wheel (ship-local, floor level). */
+export const SWIVEL_SPOT = new THREE.Vector3(2.3, ROOF_Y, 11.4)
 /** Things on the roof you can't walk through (ship-local circles). */
 const ROOF_OBSTACLES = [
   { x: WHEEL_CENTER.x, z: WHEEL_CENTER.z, r: 0.35 },
   { x: PERCH_SPOT.x, z: PERCH_SPOT.z, r: 0.25 },
   { x: CRACKER_TABLE.x, z: CRACKER_TABLE.z, r: 0.45 },
+  { x: SWIVEL_SPOT.x, z: SWIVEL_SPOT.z, r: 0.2 },
 ]
 
 // The quarterdeck on top of the captain's cabin: stairs up from the main deck, a railing round the

@@ -54,7 +54,8 @@ export class Hand {
   private hasPrev = false
   private triggerDown = false
   private primaryDown = false
-  private stickDown = false
+  /** The thumbstick is clicked in right now. */
+  stickDown = false
   private secondaryDown = false
   private readonly q = new THREE.Quaternion()
 

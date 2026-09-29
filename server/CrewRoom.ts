@@ -70,12 +70,13 @@ export class CrewRoom extends Room<{ state: CrewState }> {
 
     // Bots run on the host's device (the connected human in the lowest slot); the server relays
     // their poses and lets the host act for them.
-    this.onMessage('botPoses', (client, msg: { stage?: string; poses?: Record<string, number[]> }) => {
+    this.onMessage('botPoses', (client, msg: { stage?: string; poses?: Record<string, number[]>; water?: Record<string, boolean> }) => {
       if (client.sessionId !== hostOf(this.seats()) || !msg?.poses) return
       this.botPoses.clear()
       for (const [id, pose] of Object.entries(msg.poses)) {
         if (!/^bot-[0-3]$/.test(id) || !Array.isArray(pose) || pose.length !== POSE_LENGTH || !pose.every(Number.isFinite)) continue
-        this.botPoses.set(id, { stage: String(msg.stage ?? '').slice(0, 16), pose, water: true })
+        // In the water (dive gear) or on deck (pirate dress); older hosts don't say, so assume diving.
+        this.botPoses.set(id, { stage: String(msg.stage ?? '').slice(0, 16), pose, water: msg.water?.[id] ?? true })
       }
     })
     this.onMessage('botCommand', (client, msg: unknown) => {

@@ -123,8 +123,13 @@ export class BotCrew {
     if (this.poseTimer > 0) return
     this.poseTimer = 1 / POSE_RATE
     const poses: Record<string, number[]> = {}
-    for (const [id, bot] of this.bots) if (!bot.overboard) poses[id] = bot.buildPose().map((v) => Math.round(v * 1000) / 1000)
-    net.send('botPoses', { stage: this.stageId, poses })
+    const water: Record<string, boolean> = {}
+    for (const [id, bot] of this.bots) {
+      if (bot.overboard) continue
+      poses[id] = bot.buildPose().map((v) => Math.round(v * 1000) / 1000)
+      water[id] = bot.avatar.water
+    }
+    net.send('botPoses', { stage: this.stageId, poses, water })
   }
 
   /** Humans in this stage: the local player and remote players' heads. */

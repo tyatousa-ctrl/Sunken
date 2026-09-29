@@ -10,6 +10,7 @@ import { Player } from '../movement/Player'
 import { FpsOverlay } from '../ui/FpsOverlay'
 import { Hud } from '../ui/Hud'
 import { GogglesDisplay } from '../ui/GogglesDisplay'
+import { LevelHop } from '../ui/LevelHop'
 import { WristComputer } from '../ui/WristComputer'
 import type { Settings } from './settings'
 import { Inventory } from '../systems/Inventory'
@@ -38,6 +39,8 @@ export class Game implements GameContext {
   readonly hud: Hud
   readonly wrist: WristComputer
   readonly goggles: GogglesDisplay
+  /** Testing: both thumbsticks (L on desktop) to jump to any level. */
+  readonly levelHop: LevelHop
   readonly desktop: DesktopControls
   readonly record: RunRecord = { whoShotFirst: null, clayHits: 0, clayShots: 0, bullseyeBeforeBattle: false }
   // Single player plays the Strongman until character selection arrives with the lobby.
@@ -99,6 +102,7 @@ export class Game implements GameContext {
     this.wrist = new WristComputer(this.controllers.leftGrip)
     this.goggles = new GogglesDisplay(this.camera)
     this.audio = new AudioSystem(this.camera, this.scene, this.controllers.hands)
+    this.levelHop = new LevelHop(this.scene, this.audio)
     this.audio.setAmbience(settings.ambience)
     this.hud = new Hud(this.scene, this.camera)
     this.guide = new ControllerGuide(this.controllers.leftGrip, this.controllers.rightGrip)
@@ -183,6 +187,7 @@ export class Game implements GameContext {
       this.desktop.update()
       this.desktop.hand.update(dt)
     }
+    this.levelHop.update(dt, this.hands, this.camera, (make) => this.goTo(make))
     this.stage?.update(dt, time / 1000)
     this.bots.update(dt, this.stage)
     this.botCommands.update(dt)

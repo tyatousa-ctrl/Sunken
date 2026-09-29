@@ -33,6 +33,8 @@ import { Level1Stage } from './Level1Stage'
 const ENEMY_POSITION = new THREE.Vector3(110, 0, -100)
 const RAIL_MARGIN = 0.35
 const PULL_COOLDOWN = 2.5
+/** AUTO clays: seconds between launches once the sky is clear. */
+const AUTO_GAP = 2.5
 
 type Phase = 'fakeout' | 'attack' | 'overboard'
 
@@ -105,6 +107,8 @@ export class IntroStage implements Stage {
   private fakeoutTime = 0
   private pullCooldown = 0
   private leverUsed = false
+  /** Seconds until the AUTO switch launches the next clays. */
+  private autoTimer = 0
   private firstGunHeld = false
   private nudges = 0
   private broadsideYaw = 0
@@ -145,6 +149,7 @@ export class IntroStage implements Stage {
     this.grab.add(this.range.stack)
     this.grab.add(this.range.lever)
     this.grab.add(this.range.countSwitch)
+    this.grab.add(this.range.autoSwitch)
     this.range.onLever = (count) => {
       if (this.phase !== 'fakeout') return
       // Someone's working the thrower: Salvo stops calling "Pull!" on his own.
@@ -162,6 +167,8 @@ export class IntroStage implements Stage {
       debris: this.debris,
       hitTest: (a, b) => this.cannonHit(a, b),
       onFire: (i) => game.net?.send('cannon', { i }),
+      // Aim for the middle of her hull.
+      swivelTarget: () => this.enemy.group.localToWorld(new THREE.Vector3(0, 1.4, 0)),
     })
     this.crew = new Crew(this.ship, this.root)
     this.swords = new Swords(this.ship.shake, this.root, {
@@ -197,6 +204,8 @@ export class IntroStage implements Stage {
       beer: this.splash,
       camera: game.camera,
       onDrink: (amount) => this.onDrink(amount),
+      onHotSauce: () => this.onHotSauce(),
+      hint: (text) => game.hud.now(text, 5),
     })
     const walk = (this.walkEnv = this.walkEnvironment())
     this.crewBoard = new CrewBoard(this.ship, game.audio, (cls) => this.chooseClass(cls))
@@ -374,6 +383,14 @@ export class IntroStage implements Stage {
       }
       sword.onReleased = () => net.send('release', { id })
     })
+    // The clay switches are shared: flipping one flips it for everybody.
+    const switches = { 'intro/clayCount': this.range.countSwitch, 'intro/clayAuto': this.range.autoSwitch }
+    for (const [key, sw] of Object.entries(switches)) sw.onFlip = (index) => net.send('prop', { key, v: [index] })
+    on<{ key: string; v: number[] }>('prop', (msg) => {
+      const sw = switches[msg.key as keyof typeof switches]
+      if (sw) sw.show(msg.v[0] === 1 ? 1 : 0)
+    })
+    net.send('props', { prefix: 'intro/' })
     on<{ id: string; hand: number }>('swordHand', (msg) => this.swordHands.set(msg.id, msg.hand === 0 ? 0 : 1))
     on<{ id: string }>('claimDenied', (msg) => {
       if (msg.id === 'wheel') {
@@ -504,6 +521,17 @@ export class IntroStage implements Stage {
 
     // Until someone takes over the lever, Salvo calls "Pull!" whenever someone's holding a gun and the sky is clear.
     range.countSwitch.touch(game.hands)
+    range.autoSwitch.touch(game.hands)
+    // AUTO on: clays keep coming (a moment after the last ones are gone). In a crew one device runs it.
+    this.autoTimer = Math.max(0, this.autoTimer - dt)
+    if (range.autoSwitch.on) {
+      this.leverUsed = true
+      const runsHere = !game.net || game.bots.simulating
+      if (runsHere && !range.anyInFlight && this.autoTimer === 0) {
+        this.autoTimer = AUTO_GAP
+        this.pull(range.countSwitch.count)
+      }
+    }
     if (!this.leverUsed && gunHeld && !range.anyInFlight && this.pullCooldown === 0) this.pull(Math.random() < 0.3 ? 2 : 1)
 
     // Gentle nudges toward the ship in the bay. Nothing ever says to shoot it.
@@ -684,6 +712,17 @@ export class IntroStage implements Stage {
   }
 
   // ---- Beer ------------------------------------------------------------------------------------
+
+  /** A swig of hot sauce: fire in your mouth, and the drink's gone from your head. */
+  private onHotSauce(): void {
+    const { game } = this
+    const wasDrunk = this.drunk.drinks > 0.2
+    this.drunk.sober()
+    this.applyDrunkEffects()
+    const mouth = game.camera.getWorldPosition(new THREE.Vector3()).add(game.camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(0.25)).add(new THREE.Vector3(0, -0.08, 0))
+    this.fire.emit({ position: mouth, velocity: game.camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(1.5), spread: 0.4, color: 0xff6a2a, size: 0.08, endSize: 0.02, life: 0.5, count: 14 })
+    game.hud.say(wasDrunk ? 'WHOA, that\'s HOT! Your eyes water... and your head is clear as a bell.' : 'WHOA, that\'s HOT! Good thing you weren\'t drunk.', 4)
+  }
 
   private onDrink(amount: number): void {
     const before = Math.floor(this.drunk.drinks)

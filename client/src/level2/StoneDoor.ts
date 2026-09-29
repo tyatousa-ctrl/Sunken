@@ -9,16 +9,24 @@ const DOOR_W = 2.6
 const DOOR_H = 3.2
 const OPEN_SECONDS = 3.5
 const DIAL_RADIUS = 0.42
-const DIGITS = 9
-const STEP = (Math.PI * 2) / DIGITS
+
+/** The shape carved in a dial's middle; the clue stones frame their marks in the same shapes. */
+export type Emblem = 'circle' | 'square' | 'triangle'
+
+/** The three dials, left to right as you face the door: numbers, letters, signs. */
+export const DIAL_SETS: { symbols: string[]; emblem: Emblem }[] = [
+  { symbols: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'], emblem: 'circle' },
+  { symbols: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'], emblem: 'square' },
+  { symbols: ['!', '@', '#', '$', '%', '&', '?', '*', '+', '='], emblem: 'triangle' },
+]
 
 // The door of stone: a carved slab set into the reef that grinds down into the sand when opened,
-// and beside it a stone dial with the numbers 1 to 9 round its face. Grip the rim and turn it; it
-// settles on the number under the notch at the top when you let go.
+// and in front of it three stone dials (numbers, letters, signs). Grip a dial's rim and turn it; it
+// settles on the mark under the notch at the top when you let go.
 export class StoneDoor {
   readonly group = new THREE.Group()
   readonly collider: BoxCollider
-  readonly dial: StoneDial
+  readonly dials: StoneDial[]
   opened = false
   private readonly slab: THREE.Mesh
   private openT = -1
@@ -26,7 +34,7 @@ export class StoneDoor {
   constructor(
     position: THREE.Vector3,
     private readonly audio: AudioSystem,
-    dialOffset: THREE.Vector3,
+    dialOffsets: THREE.Vector3[],
   ) {
     const stone = new THREE.MeshStandardMaterial({ map: makeDoorTexture(), roughness: 0.95 })
     applyCaustics(stone, 0.5)
@@ -42,9 +50,17 @@ export class StoneDoor {
     const matrix = new THREE.Matrix4().makeTranslation(0, DOOR_H / 2, 0).premultiply(this.group.matrixWorld)
     this.collider = { matrix, inverse: matrix.clone().invert(), half: new THREE.Vector3(DOOR_W / 2, DOOR_H / 2, 0.3) }
 
-    this.dial = new StoneDial(audio)
-    this.dial.group.position.copy(dialOffset)
-    this.group.add(this.dial.group)
+    this.dials = DIAL_SETS.map((set, i) => {
+      const dial = new StoneDial(audio, set.symbols, set.emblem)
+      dial.group.position.copy(dialOffsets[i])
+      this.group.add(dial.group)
+      return dial
+    })
+  }
+
+  /** What the dials show, read left to right (e.g. "2C!"). */
+  get code(): string {
+    return this.dials.map((d) => d.symbol).join('')
   }
 
   /** Middle of the doorway (world). */
@@ -67,7 +83,7 @@ export class StoneDoor {
   }
 
   update(dt: number): void {
-    this.dial.update()
+    for (const dial of this.dials) dial.update()
     if (this.openT < 0 || this.openT >= 1) return
     this.openT = Math.min(1, this.openT + dt / OPEN_SECONDS)
     this.slab.position.y = DOOR_H / 2 - this.openT * DOOR_H
@@ -76,24 +92,31 @@ export class StoneDoor {
   }
 }
 
-// A round stone lock with nine numbers. `onSet` is called with the number when a turn settles.
+// A round stone lock with ten marks round its face. `onSet` is called with the mark when a turn settles.
 export class StoneDial implements Interactable {
   readonly group = new THREE.Group()
-  /** The number under the notch (1–9). */
-  value = 1
-  onSet: (value: number) => void = () => {}
+  readonly pullable = false
+  /** Index of the mark under the notch. */
+  value = 0
+  onSet: (symbol: string) => void = () => {}
+  private readonly step: number
   private readonly face = new THREE.Group()
   private readonly holds = new Map<Hand, number>()
   private angle = 0
-  private lastDigit = 1
+  private lastDigit = 0
   private readonly material: THREE.MeshStandardMaterial
   private readonly v = new THREE.Vector3()
 
-  constructor(private readonly audio: AudioSystem) {
+  constructor(
+    private readonly audio: AudioSystem,
+    readonly symbols: string[],
+    emblem: Emblem,
+  ) {
+    this.step = (Math.PI * 2) / symbols.length
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.4, 1.3, 8), new THREE.MeshStandardMaterial({ color: 0x5b554c, roughness: 1, flatShading: true }))
     post.position.y = 0.65
     this.group.add(post)
-    this.material = new THREE.MeshStandardMaterial({ map: makeDialTexture(), roughness: 0.9 })
+    this.material = new THREE.MeshStandardMaterial({ map: makeDialTexture(symbols, emblem), roughness: 0.9 })
     applyCaustics(this.material, 0.4)
     // The face is a thick stone disc facing +z, turning about z.
     const disc = new THREE.Mesh(new THREE.CylinderGeometry(DIAL_RADIUS, DIAL_RADIUS, 0.12, 36), [
@@ -110,6 +133,11 @@ export class StoneDial implements Interactable {
     notch.rotation.z = Math.PI
     notch.position.set(0, 1.6 + DIAL_RADIUS + 0.1, 0.1)
     this.group.add(notch)
+  }
+
+  /** The mark under the notch. */
+  get symbol(): string {
+    return this.symbols[this.value]
   }
 
   get held(): boolean {
@@ -136,22 +164,24 @@ export class StoneDial implements Interactable {
     this.holds.delete(hand)
     if (this.holds.size > 0) return
     // Settle on the nearest number with a heavy click.
-    this.angle = Math.round(this.angle / STEP) * STEP
+    this.angle = Math.round(this.angle / this.step) * this.step
     this.face.rotation.z = -this.angle
     this.value = this.digitAt(this.angle)
     this.audio.play('thud', this.center, 0.7)
     hand.pulse(0.5, 60)
-    this.onSet(this.value)
+    this.onSet(this.symbol)
   }
 
   setHighlight(on: boolean): void {
     this.material.emissive.setHex(on ? 0x2e7896 : 0x000000)
   }
 
-  /** Show a number (e.g. the crew already solved it). */
-  show(value: number): void {
-    this.value = value
-    this.angle = (value - 1) * STEP
+  /** Show a mark (a crewmate turned it, or the crew already solved it); ignored while you hold it. */
+  show(symbol: string): void {
+    const i = this.symbols.indexOf(symbol)
+    if (i < 0 || this.holds.size > 0) return
+    this.value = this.lastDigit = i
+    this.angle = i * this.step
     this.face.rotation.z = -this.angle
   }
 
@@ -177,10 +207,11 @@ export class StoneDial implements Interactable {
     }
   }
 
-  /** Turning clockwise (as you face it) brings the next number up to the notch. */
+  /** Turning clockwise (as you face it) brings the next mark up to the notch. */
   private digitAt(angle: number): number {
-    const k = Math.round(angle / STEP)
-    return ((((k % DIGITS) + DIGITS) % DIGITS) + 1)
+    const n = this.symbols.length
+    const k = Math.round(angle / this.step)
+    return ((k % n) + n) % n
   }
 
   /** Measured in the dial's fixed frame (not the turning face, or the turn would cancel itself). */
@@ -190,8 +221,8 @@ export class StoneDial implements Interactable {
   }
 }
 
-/** Numbers 1–9 carved round the dial; number k sits (k-1) steps anticlockwise from the top. */
-function makeDialTexture(): THREE.CanvasTexture {
+/** The marks carved round the dial (mark k sits k steps anticlockwise from the top), and its emblem. */
+function makeDialTexture(symbols: string[], emblem: Emblem): THREE.CanvasTexture {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = 512
   const ctx = canvas.getContext('2d')!
@@ -202,39 +233,43 @@ function makeDialTexture(): THREE.CanvasTexture {
   ctx.beginPath()
   ctx.arc(256, 256, 236, 0, Math.PI * 2)
   ctx.stroke()
-  ctx.beginPath()
-  ctx.arc(256, 256, 70, 0, Math.PI * 2)
-  ctx.stroke()
   ctx.fillStyle = '#2f2a23'
-  ctx.font = 'bold 84px Georgia, serif'
+  ctx.font = 'bold 66px Georgia, serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  for (let k = 1; k <= DIGITS; k++) {
-    // The face turns clockwise by `angle` to bring number k up, so k is printed anticlockwise of 1.
-    const a = -(k - 1) * STEP
-    const x = 256 + Math.sin(a) * 165
-    const y = 256 - Math.cos(a) * 165
+  const step = (Math.PI * 2) / symbols.length
+  symbols.forEach((symbol, k) => {
+    // The face turns clockwise by `angle` to bring mark k up, so k is printed anticlockwise of the first.
+    const a = -k * step
     ctx.save()
-    ctx.translate(x, y)
+    ctx.translate(256 + Math.sin(a) * 175, 256 - Math.cos(a) * 175)
     ctx.rotate(a)
-    ctx.fillText(String(k), 0, 0)
+    ctx.fillText(symbol, 0, 0)
     ctx.restore()
-  }
-  // A carved starfish in the middle: the clue's "stars".
-  ctx.beginPath()
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 === 0 ? 55 : 22
-    const a = (i / 10) * Math.PI * 2 - Math.PI / 2
-    ctx.lineTo(256 + Math.cos(a) * r, 256 + Math.sin(a) * r)
-  }
-  ctx.closePath()
-  ctx.fill()
+  })
+  // The emblem in the middle: the shape its clue stone frames its mark in.
+  ctx.lineWidth = 14
+  drawEmblem(ctx, emblem, 256, 256, 62)
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   return texture
 }
 
-/** Weathered stone with a wave border and a big carved starfish. */
+/** Outline of a circle, square or triangle centred on (x, y). */
+export function drawEmblem(ctx: CanvasRenderingContext2D, emblem: Emblem, x: number, y: number, r: number): void {
+  ctx.beginPath()
+  if (emblem === 'circle') ctx.arc(x, y, r, 0, Math.PI * 2)
+  else if (emblem === 'square') ctx.rect(x - r * 0.9, y - r * 0.9, r * 1.8, r * 1.8)
+  else {
+    ctx.moveTo(x, y - r * 1.05)
+    ctx.lineTo(x + r * 1.05, y + r * 0.75)
+    ctx.lineTo(x - r * 1.05, y + r * 0.75)
+    ctx.closePath()
+  }
+  ctx.stroke()
+}
+
+/** Weathered stone with a wave border and the three dials' shapes. */
 function makeDoorTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas')
   canvas.width = 256
@@ -251,18 +286,13 @@ function makeDoorTexture(): THREE.CanvasTexture {
   ctx.strokeStyle = '#3f392f'
   ctx.lineWidth = 6
   ctx.strokeRect(14, 14, 228, 292)
-  // A wave border and a big carved star.
+  // A wave border and the three carved shapes, one for each dial.
   ctx.beginPath()
   for (let x = 24; x <= 232; x += 4) ctx.lineTo(x, 40 + Math.sin(x * 0.12) * 8)
   ctx.stroke()
-  ctx.beginPath()
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 === 0 ? 70 : 28
-    const a = (i / 10) * Math.PI * 2 - Math.PI / 2
-    ctx.lineTo(128 + Math.cos(a) * r, 175 + Math.sin(a) * r)
-  }
-  ctx.closePath()
-  ctx.stroke()
+  drawEmblem(ctx, 'circle', 60, 175, 28)
+  drawEmblem(ctx, 'square', 128, 175, 28)
+  drawEmblem(ctx, 'triangle', 196, 178, 28)
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   return texture

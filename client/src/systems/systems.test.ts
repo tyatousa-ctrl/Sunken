@@ -117,15 +117,15 @@ describe('skill cooldown', () => {
 })
 
 describe('level 2 data', () => {
-  it('is the starfish riddle: find the door, dial the count, take the map piece', () => {
-    const data = level2 as LevelData & { starfish: number }
-    assert.equal(data.starfish, 7)
+  it('is the three-dial code: find the door, set the dials, take the map piece', () => {
+    const data = level2 as unknown as LevelData & { code: string }
+    assert.equal(data.code, '2C!')
     assert.deepEqual(data.steps.map((s) => s.id), ['findDoor', 'dialNumber', 'takeMapPiece'])
     assert.equal(data.hints.length, 3)
-    assert.ok(data.hints.every((h) => !/\b7\b|seven/i.test(h)), 'hints nudge, they never give the answer')
+    assert.ok(data.hints.every((h) => !h.includes('2C') && !/"[2C!]"/.test(h)), 'hints nudge, they never give the code')
     assert.equal(data.reward.mapPiece, 3)
     const p = new LevelProgress(data)
-    assert.deepEqual(p.complete('dialNumber'), [], 'the dial only counts once the door is found')
+    assert.deepEqual(p.complete('dialNumber'), [], 'the dials only count once the door is found')
     p.complete('findDoor')
     p.complete('dialNumber')
     assert.deepEqual(p.complete('takeMapPiece').map((e) => e.type), ['step', 'solved'])

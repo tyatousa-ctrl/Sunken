@@ -1,7 +1,8 @@
 {
   "id": "level2",
   "name": "The Seagrass Meadows",
-  "riddle": "Count the stars that live below, their number opens the door of stone.",
+  "riddle": "Three stars below each keep a mark; set the dials true, and the stone will part.",
+  "code": "2C!",
   "steps": [
     {
       "id": "findDoor",
@@ -9,7 +10,7 @@
     },
     {
       "id": "dialNumber",
-      "objective": "Set the stone dial to the number of stars."
+      "objective": "Set the three dials to the marks the sea has kept."
     },
     {
       "id": "takeMapPiece",
@@ -17,9 +18,9 @@
     }
   ],
   "hints": [
-    "Stars below the waves don't shine in the sky. Look on the sand, in the seagrass and on the rocks. Touch one and it glows, so you know it's counted.",
-    "A door of stone is set into the reef somewhere to the north. Look at what's carved beside it.",
-    "Have you counted them all? One star lives where the current won't let you swim up. A friend of the Fish Whisperer might carry you there."
+    "Three dials, three kinds of mark: numbers, letters and signs. Somewhere in the meadow, three big starfish each carry one of them on their backs.",
+    "Each starfish frames its mark in a shape. Look at the middle of each dial.",
+    "One marked starfish lies where the current won't let you swim up. Grip the turtle's shell and hold on."
   ],
   "reward": {
     "mapPiece": 3,
@@ -29,6 +30,5 @@
   "collectibles": {
     "coins": 20,
     "gems": 3
-  },
-  "starfish": 7
+  }
 }

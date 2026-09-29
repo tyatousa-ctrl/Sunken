@@ -3,6 +3,7 @@ import type { AudioSystem } from '../audio/AudioSystem'
 import type { Particles } from '../fx/Particles'
 import type { Hand } from '../input/Hand'
 import type { GrabSystem, Interactable } from '../interaction/GrabSystem'
+import { LooseItem } from '../interaction/LooseItem'
 import { Label, type LabelLine } from '../ui/Label'
 import { DECK_Y, halfWidthAt, type Galleon } from '../world/ship/Galleon'
 
@@ -25,6 +26,10 @@ export interface BeerContext {
   camera: THREE.Camera
   /** Called with the fraction of a mug just swallowed. */
   onDrink: (amount: number, hand: Hand) => void
+  /** A swig of hot sauce: sobers you right up. */
+  onHotSauce: (hand: Hand) => void
+  /** A word of explanation the first time something's picked up. */
+  hint: (text: string) => void
 }
 
 // A beer barrel with a brass tap, on a table with pewter mugs. Hold a mug under the tap and pull
@@ -106,6 +111,52 @@ export class BeerBarrel {
       const mug = new Mug(station, new THREE.Vector3(x, TABLE.height, z), this.spout, ctx)
       this.mugs.push(grab.add(mug))
     }
+
+    // A bottle of hot sauce standing on top of the barrel: one swig and your head clears.
+    const bottle = makeHotSauce()
+    bottle.position.set(cx, cy + R, 0)
+    station.add(bottle)
+    let atMouthSince = -1
+    let lastSwig = -10
+    let hinted = false
+    const up = new THREE.Vector3()
+    const head = new THREE.Vector3()
+    const neck = new THREE.Vector3()
+    const base = new THREE.Vector3()
+    const near = new THREE.Vector3()
+    const mouthDrop = new THREE.Vector3(0, -0.07, 0)
+    const segment = new THREE.Line3()
+    grab.add(
+      new LooseItem(bottle, {
+        radius: 0.09,
+        settle: 'home',
+        onGrab: () => {
+          if (!hinted) ctx.hint('Hot sauce! Raise it to your mouth and tip it back for a swig. It clears your head.')
+          hinted = true
+          return false
+        },
+        whileHeld: (hand) => {
+          const now = performance.now() / 1000
+          up.set(0, 1, 0).applyQuaternion(bottle.getWorldQuaternion(new THREE.Quaternion()))
+          // Any part of the bottle (base to neck) at your mouth, a little below your eyes, tipped back.
+          const mouth = ctx.camera.getWorldPosition(head).add(mouthDrop)
+          bottle.localToWorld(neck.set(0, 0.2, 0))
+          const along = segment.set(bottle.getWorldPosition(base), neck).closestPointToPoint(mouth, true, near)
+          const atMouth = along.distanceTo(mouth) < MOUTH_DISTANCE + 0.05 && up.y < 0.45
+          if (!atMouth) {
+            atMouthSince = -1
+            return
+          }
+          if (atMouthSince < 0) atMouthSince = now
+          if (now - atMouthSince > 0.4 && now - lastSwig > 3) {
+            lastSwig = now
+            ctx.audio.play('gulp', head, 0.8)
+            hand.pulse(1, 250)
+            ctx.onHotSauce(hand)
+          }
+        },
+      }),
+    )
     this.updateSign()
   }
 
@@ -267,4 +318,34 @@ export class Mug implements Interactable {
     this.beer.position.y = 0.006 + level / 2
     this.foam.position.y = 0.006 + level + 0.009
   }
+}
+
+/** A little red bottle of hot sauce with a white label and a green cap (origin at its base). */
+function makeHotSauce(): THREE.Group {
+  const group = new THREE.Group()
+  const glass = new THREE.MeshStandardMaterial({ color: 0xb3161b, roughness: 0.25, metalness: 0.1 })
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.035, 0.13, 14), glass)
+  body.position.y = 0.065
+  const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.032, 0.03, 14), glass)
+  shoulder.position.y = 0.145
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.014, 0.04, 10), glass)
+  neck.position.y = 0.18
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.022, 10), new THREE.MeshStandardMaterial({ color: 0x2f7d32, roughness: 0.5 }))
+  cap.position.y = 0.21
+  const canvas = document.createElement('canvas')
+  canvas.width = 256
+  canvas.height = 64
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#f4ecd8'
+  ctx.fillRect(0, 0, 256, 64)
+  ctx.fillStyle = '#b3161b'
+  ctx.font = 'bold 34px Georgia, serif'
+  ctx.textAlign = 'center'
+  ctx.fillText('HOT SAUCE', 128, 44)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  const label = new THREE.Mesh(new THREE.CylinderGeometry(0.0335, 0.0355, 0.05, 16, 1, true), new THREE.MeshStandardMaterial({ map: texture, roughness: 0.8 }))
+  label.position.y = 0.065
+  group.add(body, shoulder, neck, cap, label)
+  return group
 }

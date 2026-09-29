@@ -5,6 +5,7 @@ import type { Hand } from '../input/Hand'
 import type { GrabSystem, Interactable } from '../interaction/GrabSystem'
 import { Label } from '../ui/Label'
 import { DECK_Y, type Galleon } from '../world/ship/Galleon'
+import { SWIVEL_SPOT } from './Quarterdeck'
 
 const GRAVITY = 9.8
 /** Seconds of fizzing fuse between touching the flame to the hole and the bang. */
@@ -33,6 +34,8 @@ export interface CannonContext {
   hitTest: (a: THREE.Vector3, b: THREE.Vector3) => THREE.Vector3 | null
   /** This player fired cannon `index` (tell the crew). */
   onFire: (index: number) => void
+  /** What the quarterdeck's swivel gun stays trained on (world): the other ship. */
+  swivelTarget: () => THREE.Vector3
 }
 
 interface Gun {
@@ -43,6 +46,8 @@ interface Gun {
   reload: number
   /** Fired by this player (only their shots can hit something and count). */
   mine: boolean
+  /** The quarterdeck's swivel gun: turns to follow its target, and lobs its ball onto it. */
+  swivel?: SwivelGun
 }
 
 interface Ball {
@@ -50,6 +55,8 @@ interface Ball {
   velocity: THREE.Vector3
   age: number
   mine: boolean
+  /** The swivel gun's ball: seconds until it lands on its (moving) target. */
+  landIn?: number
 }
 
 // The galleon's six deck cannons, fired the old way: take a match from the box on the crate, strike
@@ -72,6 +79,8 @@ export class DeckCannons {
     private readonly ctx: CannonContext,
   ) {
     this.guns = ship.cannons.map((c) => ({ ...c, fuse: -1, reload: 0, mine: false }))
+    const swivel = new SwivelGun(ship.shake, SWIVEL_SPOT)
+    this.guns.push({ touchHole: new THREE.Vector3(), muzzle: new THREE.Vector3(), side: 1, fuse: -1, reload: 0, mine: false, swivel })
 
     const crate = new THREE.Group()
     crate.position.copy(MATCH_CRATE)
@@ -96,6 +105,11 @@ export class DeckCannons {
     this.sign.face(camera)
     const flame = this.box.flameTip(this.v)
     this.ship.shake.updateWorldMatrix(true, false)
+    for (const gun of this.guns) {
+      if (!gun.swivel) continue
+      gun.swivel.aim(this.ctx.swivelTarget(), dt, camera)
+      gun.swivel.points(this.ship.shake, gun.touchHole, gun.muzzle)
+    }
     this.guns.forEach((gun, i) => {
       gun.reload = Math.max(0, gun.reload - dt)
       const hole = this.ship.shake.localToWorld(this.w.copy(gun.touchHole))
@@ -130,15 +144,18 @@ export class DeckCannons {
     const muzzle = this.ship.shake.localToWorld(gun.muzzle.clone())
     const quat = this.ship.shake.getWorldQuaternion(new THREE.Quaternion())
     const out = new THREE.Vector3(gun.side, 0, 0).applyQuaternion(quat)
+    // The swivel gun lobs its ball straight onto its target.
+    const lob = gun.swivel ? lobVelocity(muzzle, this.ctx.swivelTarget()) : null
+    if (lob) out.copy(lob).normalize()
     this.ctx.audio.play('cannon', muzzle)
     this.ctx.fire.emit({ position: muzzle, velocity: out.clone().multiplyScalar(6), spread: 1.5, color: 0xffc56b, size: 0.9, endSize: 0.2, life: 0.15, count: 6 })
     this.ctx.smoke.emit({ position: muzzle, velocity: out.clone().multiplyScalar(4).setY(0.8), spread: 1.6, color: 0xc9c2b8, size: 0.5, endSize: 3, life: 3.5, count: 22, alpha: 0.7 })
     const mesh = new THREE.Mesh(this.ballGeometry, this.ballMaterial)
     mesh.position.copy(muzzle)
     this.root.add(mesh)
-    const velocity = out.multiplyScalar(BALL_SPEED)
-    velocity.y += 3
-    this.balls.push({ mesh, velocity, age: 0, mine: gun.mine })
+    const velocity = lob ?? out.multiplyScalar(BALL_SPEED)
+    if (!lob) velocity.y += 3
+    this.balls.push({ mesh, velocity, age: 0, mine: gun.mine, landIn: lob ? lobTime(muzzle.distanceTo(this.ctx.swivelTarget())) : undefined })
     if (gun.mine) this.ctx.onFire(index)
     gun.mine = false
   }
@@ -148,6 +165,11 @@ export class DeckCannons {
       const ball = this.balls[i]
       ball.age += dt
       const from = this.v.copy(ball.mesh.position)
+      // The swivel gun's ball follows its target (the ships move while it flies), so it always lands.
+      if (ball.landIn !== undefined) {
+        ball.landIn = Math.max(0.05, ball.landIn - dt)
+        ball.velocity.copy(lobVelocity(from, this.ctx.swivelTarget(), ball.landIn + dt))
+      }
       ball.mesh.position.addScaledVector(ball.velocity, dt)
       ball.mesh.position.y -= 0.5 * GRAVITY * dt * dt
       ball.velocity.y -= GRAVITY * dt
@@ -168,6 +190,94 @@ export class DeckCannons {
         this.balls.splice(i, 1)
       }
     }
+  }
+}
+
+/** Flight time for a lob over this distance. */
+const lobTime = (distance: number) => THREE.MathUtils.clamp(distance / 70, 0.6, 5)
+
+/** Launch velocity that carries a ball from `from` onto `to` in `t` seconds (a gently arcing flight). */
+function lobVelocity(from: THREE.Vector3, to: THREE.Vector3, t = lobTime(from.distanceTo(to))): THREE.Vector3 {
+  return to.clone().sub(from).divideScalar(t).add(new THREE.Vector3(0, 0.5 * GRAVITY * t, 0))
+}
+
+// A swivel gun on a post at the quarterdeck rail: it turns on its own to stay trained on the other
+// ship. Light it like the deck cannons (a lit match to the touch hole) and it lobs a ball onto her.
+class SwivelGun {
+  private readonly yawPivot = new THREE.Group()
+  private readonly barrel = new THREE.Group()
+  private readonly sign = new Label({ width: 0.55, canvasWidth: 560, canvasHeight: 240, billboard: true })
+  private readonly local = new THREE.Vector3()
+  private yaw = 0
+  private pitch = 0
+
+  constructor(parent: THREE.Object3D, at: THREE.Vector3) {
+    const group = new THREE.Group()
+    group.position.copy(at)
+    const wood = new THREE.MeshStandardMaterial({ color: 0x4a2f1b, roughness: 0.85 })
+    const iron = new THREE.MeshStandardMaterial({ color: 0x2b2d30, roughness: 0.45, metalness: 0.7 })
+    const bronze = new THREE.MeshStandardMaterial({ color: 0x8a6a2e, roughness: 0.35, metalness: 0.8 })
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.13, 0.95, 10), wood)
+    post.position.y = 0.475
+    group.add(post)
+    this.yawPivot.position.y = 1.0
+    const yoke = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.08), iron)
+    for (const x of [-0.12, 0.12]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.14, 0.06), iron)
+      arm.position.set(x, 0.07, 0)
+      this.yawPivot.add(arm)
+    }
+    this.yawPivot.add(yoke)
+    this.barrel.position.y = 0.12
+    // Bronze barrel along -z: muzzle forward, a knob (cascabel) behind the breech.
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.085, 0.95, 14).rotateX(Math.PI / 2), bronze)
+    tube.position.z = -0.12
+    const muzzleRing = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.014, 6, 14), bronze)
+    muzzleRing.position.z = -0.59
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), bronze)
+    knob.position.z = 0.4
+    const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.02, 8), iron)
+    hole.position.set(0, 0.085, 0.27)
+    this.barrel.add(tube, muzzleRing, knob, hole)
+    this.yawPivot.add(this.barrel)
+    group.add(this.yawPivot)
+    this.sign.mesh.position.set(0, 1.75, 0)
+    group.add(this.sign.mesh)
+    this.sign.set([
+      { text: 'Swivel gun', size: 40, bold: true, color: '#f2b64a' },
+      { text: 'Always trained on that ship out there', size: 26 },
+      { text: 'Bring a lit match up from the box on deck', size: 24 },
+      { text: 'and touch it to the hole on top', size: 24 },
+    ])
+    parent.add(group)
+  }
+
+  /** Turn (smoothly) to point along the lob that lands on `target` (world). */
+  aim(target: THREE.Vector3, dt: number, camera: THREE.Camera): void {
+    this.sign.face(camera)
+    const muzzle = this.barrel.localToWorld(this.local.set(0, 0, -0.6))
+    const dir = lobVelocity(muzzle, target)
+    // Into the post's frame (the ship may be turning or shaking).
+    const parent = this.yawPivot.parent!
+    parent.updateWorldMatrix(true, false)
+    const q = parent.getWorldQuaternion(new THREE.Quaternion()).invert()
+    dir.applyQuaternion(q)
+    const yaw = Math.atan2(-dir.x, -dir.z)
+    const pitch = Math.atan2(dir.y, Math.hypot(dir.x, dir.z))
+    const k = 1 - Math.exp(-4 * dt)
+    let dy = yaw - this.yaw
+    dy = Math.atan2(Math.sin(dy), Math.cos(dy))
+    this.yaw += dy * k
+    this.pitch += (THREE.MathUtils.clamp(pitch, -0.3, 0.9) - this.pitch) * k
+    this.yawPivot.rotation.y = this.yaw
+    this.barrel.rotation.x = this.pitch
+  }
+
+  /** Current touch hole and muzzle, in `frame`'s space (ship-local). */
+  points(frame: THREE.Object3D, touchHole: THREE.Vector3, muzzle: THREE.Vector3): void {
+    this.barrel.updateWorldMatrix(true, false)
+    frame.worldToLocal(this.barrel.localToWorld(touchHole.set(0, 0.1, 0.27)))
+    frame.worldToLocal(this.barrel.localToWorld(muzzle.set(0, 0, -0.62)))
   }
 }
 
