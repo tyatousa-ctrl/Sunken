@@ -1,3 +1,4 @@
+import { ControllerGuide } from '../ui/ControllerGuide'
 import * as THREE from 'three'
 import { VRButton } from 'three/addons/webxr/VRButton.js'
 import { AudioSystem } from '../audio/AudioSystem'
@@ -12,7 +13,7 @@ import { WristComputer } from '../ui/WristComputer'
 import type { Settings } from './settings'
 import { Inventory } from '../systems/Inventory'
 import type { NetClient, RosterEntry } from '../net/NetClient'
-import { RemotePlayers } from '../net/RemotePlayers'
+import { Avatar, RemotePlayers } from '../net/RemotePlayers'
 import { Voice } from '../net/Voice'
 import type { PoseArray } from '../net/protocol'
 import { BotCrew } from '../bots/BotCrew'
@@ -48,6 +49,9 @@ export class Game implements GameContext {
 
   private readonly timer = new THREE.Timer()
   private readonly controllers: Controllers
+  private readonly guide: ControllerGuide
+  /** Your own diver body, under the camera. */
+  private readonly selfBody = new Avatar('#e8b930')
   private readonly size = new THREE.Vector2()
   private pending: (() => Stage) | null = null
   private fadeDir = 0
@@ -84,7 +88,11 @@ export class Game implements GameContext {
     this.fps = new FpsOverlay(this.renderer, this.controllers.leftGrip, settings.showFps)
     this.wrist = new WristComputer(this.controllers.leftGrip)
     this.audio = new AudioSystem(this.camera, this.scene, this.controllers.hands)
+    this.audio.setAmbience(settings.ambience)
     this.hud = new Hud(this.scene, this.camera)
+    this.guide = new ControllerGuide(this.controllers.leftGrip, this.controllers.rightGrip)
+    this.selfBody.makeSelf()
+    this.scene.add(this.selfBody.group)
     this.bots = new BotCrew(this)
     this.botCommands = new BotCommands(this, this.bots)
 
@@ -166,7 +174,11 @@ export class Game implements GameContext {
     this.botCommands.update(dt)
     this.updateNet(dt)
     this.updateTransition(dt)
+    this.updateSelfBody()
     this.hud.update(dt, inXr)
+    this.guide.enabled = this.settings.buttonHints
+    const busy: [boolean, boolean] = [!!this.controllers.left?.held, !!this.controllers.right?.held]
+    this.guide.update(this.pending ? null : (this.stage?.guide?.() ?? null), this.camera, inXr, busy)
     this.audio.update(dt, this.player.lastResult.thrust)
     this.vignette.update(dt, this.player.speed, this.player.physics.yawRate)
     this.fps.update(time)
@@ -189,6 +201,19 @@ export class Game implements GameContext {
   }
 
   /** Head and both hands, world space: [head pos, head quat, left pos, left quat, right pos, right quat]. */
+  private updateSelfBody(): void {
+    const body = this.selfBody
+    body.group.visible = this.stage !== null && this.player.env !== null
+    if (!body.group.visible) return
+    const me = this.net?.sessionId ?? 'me'
+    const color = this.bots.members().find((m) => m.id === me)?.color
+    if (color) body.setColor(color)
+    this.camera.getWorldPosition(body.head.position)
+    this.camera.getWorldQuaternion(body.head.quaternion)
+    body.water = this.player.env?.kind === 'swim' || this.player.inWater
+    body.poseBody()
+  }
+
   private buildPose(): PoseArray {
     const pose = this.pose
     const write = (object: THREE.Object3D, at: number) => {

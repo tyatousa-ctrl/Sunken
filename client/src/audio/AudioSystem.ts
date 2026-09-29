@@ -14,6 +14,8 @@ export class AudioSystem {
   private readonly hiss = new Map<Hand, THREE.PositionalAudio>()
   private environment: AudioEnvironment = 'air'
   private duck = 1
+  /** Player's background-sound setting, 0–1. */
+  private ambience = 0.5
   private duckTimer = 0
   private started = false
 
@@ -52,6 +54,12 @@ export class AudioSystem {
       hand.grip.add(sound)
       this.hiss.set(hand, sound)
     }
+    this.applyLevels()
+  }
+
+  /** Background sound level from settings (0–1). */
+  setAmbience(level: number): void {
+    this.ambience = Math.max(0, Math.min(1, level))
     this.applyLevels()
   }
 
@@ -108,7 +116,7 @@ export class AudioSystem {
         this.applyLevels()
       }
     }
-    this.hands.forEach((hand, i) => this.hiss.get(hand)?.setVolume((thrust[i] ?? 0) * 0.5))
+    this.hands.forEach((hand, i) => this.hiss.get(hand)?.setVolume((thrust[i] ?? 0) * 0.25))
   }
 
   private loop(buffer: AudioBuffer): THREE.Audio {
@@ -121,7 +129,8 @@ export class AudioSystem {
   }
 
   private applyLevels(): void {
-    this.waves?.setVolume(this.environment === 'air' ? 0.35 * this.duck : 0)
-    this.underwater?.setVolume(this.environment === 'water' ? 0.35 * this.duck : 0)
+    // Well under the effects and voices; the slider scales it from silent to this.
+    this.waves?.setVolume(this.environment === 'air' ? 0.12 * this.ambience * this.duck : 0)
+    this.underwater?.setVolume(this.environment === 'water' ? 0.1 * this.ambience * this.duck : 0)
   }
 }

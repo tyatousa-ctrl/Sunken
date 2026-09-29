@@ -3,7 +3,8 @@ import type { AudioSystem } from '../audio/AudioSystem'
 import type { Particles } from '../fx/Particles'
 import type { Hand } from '../input/Hand'
 import type { Interactable } from '../interaction/GrabSystem'
-import { FlickDetector, ShotgunAction } from './shotgunLogic'
+import { Label } from '../ui/Label'
+import { FlickDetector, SHELLS, ShotgunAction } from './shotgunLogic'
 
 const PELLETS = 8
 const SPREAD = THREE.MathUtils.degToRad(2.2)
@@ -18,6 +19,8 @@ export interface ShotgunEffects {
   flash: Particles
   /** Called with the muzzle position and each pellet's direction. */
   onFire: (origin: THREE.Vector3, directions: THREE.Vector3[]) => void
+  /** Playing with keyboard and mouse (changes the reload hint). */
+  desktop: () => boolean
 }
 
 // Pirate blunderbuss. Grip to pick it up (it snaps into the hand), trigger to fire, flick to reload,
@@ -36,6 +39,8 @@ export class Shotgun implements Interactable {
   onReleased: () => void = () => {}
 
   private readonly model = new THREE.Group()
+  /** Floating shell count over the breech, facing the shooter; tells you how to reload at zero. */
+  private readonly ammo = new Label({ width: 0.13, canvasWidth: 512, canvasHeight: 200 })
   private readonly hinge = new THREE.Group()
   private readonly flick = new FlickDetector()
   private readonly materials: THREE.MeshStandardMaterial[] = []
@@ -60,6 +65,10 @@ export class Shotgun implements Interactable {
   ) {
     this.buildModel()
     this.object.add(this.model)
+    this.ammo.mesh.position.set(0, 0.085, 0.0)
+    this.ammo.mesh.rotation.x = -0.55
+    this.ammo.visible = false
+    this.object.add(this.ammo.mesh)
     rack.add(this.object)
     this.object.position.copy(position)
     this.object.quaternion.copy(quaternion)
@@ -152,6 +161,7 @@ export class Shotgun implements Interactable {
   }
 
   update(dt: number): void {
+    this.ammo.visible = this.main !== null
     this.recoil *= Math.exp(-14 * dt)
     this.model.position.z = 0.07 * this.recoil
     this.model.rotation.x = 0.22 * this.recoil
@@ -171,6 +181,7 @@ export class Shotgun implements Interactable {
     }
     const main = this.main
     if (!main) return
+    this.updateAmmo()
 
     if (this.support) this.aimTwoHanded(main, this.support)
     else this.object.quaternion.identity()
@@ -229,6 +240,26 @@ export class Shotgun implements Interactable {
     this.fx.flash.emit({ position: origin, velocity: forward.clone().multiplyScalar(3), color: 0xffc56b, size: 0.45, endSize: 0.1, life: 0.08, count: 3 })
     this.fx.smoke.emit({ position: origin, velocity: forward.clone().multiplyScalar(2.5), spread: 0.4, color: 0xb9b2a8, size: 0.15, endSize: 0.9, life: 1.8, count: 10, alpha: 0.7 })
     this.fx.onFire(origin, directions)
+  }
+
+  private updateAmmo(): void {
+    const { shells, open } = this.action
+    const pips = '●'.repeat(shells) + '○'.repeat(SHELLS - shells)
+    const reload = this.fx.desktop() ? 'or press R' : 'or press A / X'
+    if (open) {
+      this.ammo.set([
+        { text: 'Open', color: '#ffd27a', size: 44, bold: true },
+        { text: 'Flick up to load', size: 40, bold: true },
+      ])
+    } else if (shells === 0 || this.quickReloadTimer > 0) {
+      this.ammo.set([
+        { text: this.quickReloadTimer > 0 ? 'Loading…' : `${pips}  Empty`, color: '#ff8a7a', size: 44, bold: true },
+        { text: 'Flick down to open', size: 40, bold: true },
+        { text: reload, size: 28, color: '#b9c7cf' },
+      ])
+    } else {
+      this.ammo.set([{ text: `${pips}  ${shells} ${shells === 1 ? 'shell' : 'shells'}`, color: '#ffe7a8', size: 50, bold: true }])
+    }
   }
 
   private clack(intensity: number): void {

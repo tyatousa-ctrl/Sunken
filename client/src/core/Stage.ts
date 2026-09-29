@@ -11,6 +11,7 @@ import type { NetClient } from '../net/NetClient'
 import type { RemotePlayers } from '../net/RemotePlayers'
 import type { BotCrew } from '../bots/BotCrew'
 import type { Settings } from './settings'
+import type { ButtonGuide } from '../ui/ControllerGuide'
 
 /** Things that last the whole run (achievements, stats), shown on the victory screen later. */
 export interface RunRecord {
@@ -72,6 +73,8 @@ export interface Stage {
   enter(): void
   update(dt: number, elapsed: number): void
   exit(): void
+  /** What the buttons do right now, for the controller guide. */
+  guide?(): ButtonGuide | null
 }
 
 /** Free GPU resources for everything under `root`. */

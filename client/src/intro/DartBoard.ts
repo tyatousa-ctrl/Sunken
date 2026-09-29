@@ -3,6 +3,7 @@ import type { AudioSystem } from '../audio/AudioSystem'
 import type { Particles } from '../fx/Particles'
 import type { Hand } from '../input/Hand'
 import type { GrabSystem, Interactable } from '../interaction/GrabSystem'
+import { Label, type LabelLine } from '../ui/Label'
 import { CABIN_FRONT_Z, DECK_Y, type Galleon } from '../world/ship/Galleon'
 import { DartsGame, MODE_NAMES, type DartsMode } from './darts/DartsGame'
 import { MISS, RADII, SEGMENTS, scoreAt, type DartScore } from './darts/scoring'
@@ -47,6 +48,9 @@ export class DartBoardArea {
   private slateBreakTimer = -1
   private boardFall: THREE.Vector3 | null = null
   private readonly v = new THREE.Vector3()
+  /** How-to sign over the rack; the step you're on lights up. */
+  private readonly sign = new Label({ width: 0.8, canvasWidth: 640, canvasHeight: 440, billboard: true })
+  private readonly rackObject = new THREE.Group()
 
   constructor(
     readonly root: THREE.Group,
@@ -97,8 +101,10 @@ export class DartBoardArea {
     ship.shake.add(oche)
 
     // Rack: a post with a tray; each player colour gets three darts.
-    const rack = new THREE.Group()
+    const rack = this.rackObject
     rack.position.copy(RACK_POSITION)
+    this.sign.mesh.position.set(0, 1.75, 0)
+    rack.add(this.sign.mesh)
     const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a20, roughness: 0.85 })
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.0, 0.06), wood)
     post.position.y = 0.5
@@ -159,7 +165,8 @@ export class DartBoardArea {
     this.boardFall = new THREE.Vector3(0, 0, 0)
   }
 
-  update(dt: number, hands: Hand[]): void {
+  update(dt: number, hands: Hand[], camera?: THREE.Camera): void {
+    if (camera) this.updateSign(camera)
     this.buttonCooldown = Math.max(0, this.buttonCooldown - dt)
     if (!this.interrupted) {
       for (const b of this.buttons) {
@@ -192,6 +199,26 @@ export class DartBoardArea {
       }
     }
     if (this.boardFall) this.updateBoardFall(dt)
+  }
+
+  private updateSign(camera: THREE.Camera): void {
+    this.sign.visible = !this.interrupted
+    if (this.interrupted) return
+    const holding = this.darts.some((d) => d.state === 'held')
+    // Behind the line = your head is on the far side of the oche from the board (ship-local z).
+    const head = this.rackObject.parent!.worldToLocal(camera.getWorldPosition(this.v))
+    const atLine = head.z < BOARD_POSITION.z - THROW_DISTANCE + 0.25 && Math.abs(head.x - BOARD_POSITION.x) < 1.2
+    const step = !holding ? 0 : atLine ? 2 : 1
+    const line = (i: number, text: string): LabelLine =>
+      i === step ? { text: `▶ ${text}`, color: '#ffd27a', size: 29, bold: true } : { text, size: 26, color: '#d9e2e6' }
+    this.sign.set([
+      { text: 'Darts', size: 44, bold: true, color: '#f2b64a' },
+      line(0, '1. Grip a dart from this rack'),
+      line(1, '2. Stand behind the white line'),
+      line(2, '3. Aim, swing your arm forward and let go of grip to throw'),
+      { text: 'Blue button: game  ·  Red button: double out (touch them)', size: 22, color: '#9fb2bb' },
+    ])
+    this.sign.face(camera)
   }
 
   private updateBoardFall(dt: number): void {

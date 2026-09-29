@@ -1,3 +1,4 @@
+import type { ButtonGuide } from '../ui/ControllerGuide'
 import * as THREE from 'three'
 import { disposeTree, type GameContext, type Stage } from '../core/Stage'
 import { GrabSystem } from '../interaction/GrabSystem'
@@ -46,6 +47,14 @@ export class DiveStage implements Stage {
 
     game.vignette.setMask(true)
     game.player.enter(env, new THREE.Vector3(0, 0.6, 4), 0, this.bubbles)
+  }
+
+  guide(): ButtonGuide {
+    return {
+      left: ['Grip + pull: swim', 'Trigger: bubble jet', 'Stick: drift'],
+      right: ['Grip + pull: swim', 'Trigger: bubble jet', 'Stick: turn · rise / sink'],
+      desktop: ['<b>Diving</b>', 'WASD: swim · Space / Q: rise / sink · Shift: jets'],
+    }
   }
 
   update(dt: number, elapsed: number): void {

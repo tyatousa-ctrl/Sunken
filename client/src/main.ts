@@ -73,6 +73,19 @@ const codeInput = document.getElementById('crew-code') as HTMLInputElement
 const muteToggle = document.getElementById('opt-mute') as HTMLInputElement
 const classSelect = document.getElementById('opt-class') as HTMLSelectElement
 const spellMenuToggle = document.getElementById('opt-spellmenu') as HTMLInputElement
+const ambienceSlider = document.getElementById('opt-ambience') as HTMLInputElement
+const hintsToggle = document.getElementById('opt-hints') as HTMLInputElement
+ambienceSlider.value = String(Math.round(settings.ambience * 100))
+hintsToggle.checked = settings.buttonHints
+ambienceSlider.addEventListener('input', () => {
+  settings.ambience = Number(ambienceSlider.value) / 100
+  game.audio.setAmbience(settings.ambience)
+  saveSettings(settings)
+})
+hintsToggle.addEventListener('change', () => {
+  settings.buttonHints = hintsToggle.checked
+  saveSettings(settings)
+})
 classSelect.value = settings.character
 spellMenuToggle.checked = settings.spellMenu
 classSelect.addEventListener('change', () => {

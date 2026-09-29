@@ -3,6 +3,7 @@ import type { AudioSystem } from '../audio/AudioSystem'
 import type { Particles } from '../fx/Particles'
 import type { Hand } from '../input/Hand'
 import type { GrabSystem, Interactable } from '../interaction/GrabSystem'
+import { Label, type LabelLine } from '../ui/Label'
 import { DECK_Y, halfWidthAt, type Galleon } from '../world/ship/Galleon'
 
 /** Seconds to fill a mug at full trigger. */
@@ -29,6 +30,8 @@ export interface BeerContext {
 export class BeerBarrel {
   readonly mugs: Mug[] = []
   readonly spout = new THREE.Object3D()
+  /** How-to sign over the barrel; the step you're on lights up. */
+  private readonly sign = new Label({ width: 0.8, canvasWidth: 640, canvasHeight: 440, billboard: true })
 
   constructor(ship: Galleon, grab: GrabSystem, ctx: BeerContext) {
     const barrel = new THREE.Group()
@@ -59,6 +62,8 @@ export class BeerBarrel {
     this.spout.position.set(0, 0.44, 0.47)
     barrel.add(this.spout)
     ship.shake.add(barrel)
+    this.sign.mesh.position.set(0, 1.75, 0.1)
+    barrel.add(this.sign.mesh)
 
     // Four mugs stand on the barrel head, one per player.
     const slots: [number, number][] = [[-0.12, -0.1], [0.12, -0.1], [-0.12, 0.12], [0.12, 0.12]]
@@ -66,6 +71,26 @@ export class BeerBarrel {
       const mug = new Mug(barrel, new THREE.Vector3(x, 0.9, z), this.spout, ctx)
       this.mugs.push(grab.add(mug))
     }
+    this.updateSign()
+  }
+
+  /** Keep the sign facing you and highlight the next step. */
+  update(camera: THREE.Camera): void {
+    this.updateSign()
+    this.sign.face(camera)
+  }
+
+  private updateSign(): void {
+    const mug = this.mugs.find((m) => m.heldBy)
+    const step = !mug ? 0 : mug.fill < 0.98 && !mug.drank ? 1 : 2
+    const line = (i: number, text: string): LabelLine =>
+      i === step ? { text: `▶ ${text}`, color: '#ffd27a', size: 30, bold: true } : { text, size: 27, color: '#d9e2e6' }
+    this.sign.set([
+      { text: 'Grog', size: 44, bold: true, color: '#f2b64a' },
+      line(0, '1. Grip a mug from the barrel top'),
+      line(1, '2. Hold it under the brass tap and pull the trigger to fill'),
+      line(2, '3. Raise it to your mouth and tip it back to drink'),
+    ])
   }
 }
 
@@ -74,6 +99,8 @@ export class Mug implements Interactable {
   /** 0 empty – 1 full. */
   fill = 0
   heldBy: Hand | null = null
+  /** Has been drunk from since it was picked up (keeps the sign on step 3 while you sip). */
+  drank = false
   private readonly beer: THREE.Mesh
   private readonly foam: THREE.Mesh
   private readonly materials: THREE.MeshStandardMaterial[] = []
@@ -119,6 +146,7 @@ export class Mug implements Interactable {
 
   grab(hand: Hand): void {
     this.heldBy = hand
+    this.drank = false
     this.returning = 0
     hand.grip.attach(this.object)
     hand.pulse(0.25, 25)
@@ -181,6 +209,7 @@ export class Mug implements Interactable {
     if (nearFace && this.up.y < 0.6 && this.fill > 0) {
       const amount = Math.min(this.fill, dt / DRINK_SECONDS)
       this.fill -= amount
+      this.drank = true
       this.ctx.onDrink(amount, hand)
       this.gulpTimer -= dt
       if (this.gulpTimer <= 0) {

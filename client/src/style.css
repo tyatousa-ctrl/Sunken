@@ -33,3 +33,7 @@ body.in-xr .hud-dom, body.in-xr .dive-dom { display: none; }
 #crew-code { text-transform: uppercase; letter-spacing: 0.2em; font-weight: 700; }
 #crew-status { margin: 0; font-size: 14px; }
 #crew-status b { color: #ffd166; letter-spacing: 0.15em; }
+#intro input[type=range] { accent-color: #3fa7ff; width: 50%; }
+.legend-dom { position: fixed; left: 12px; bottom: 12px; max-width: 46%; padding: 6px 10px; border-radius: 8px; background: rgba(0,0,0,0.55); font: 13px/1.4 system-ui, sans-serif; pointer-events: none; }
+body.in-xr .legend-dom { display: none; }
+@media (max-width: 600px) { .legend-dom { display: none; } }

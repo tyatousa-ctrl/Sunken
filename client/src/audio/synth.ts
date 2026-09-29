@@ -94,7 +94,8 @@ export function synthesizeBed(context: BaseAudioContext, kind: 'waves' | 'underw
   const length = seconds * rate
   const buffer = context.createBuffer(1, length, rate)
   const out = buffer.getChannelData(0)
-  const cutoff = kind === 'waves' ? 900 : 260
+  // Soft and low: a bed you notice when it stops, not a hiss.
+  const cutoff = kind === 'waves' ? 520 : 170
   const a = 1 - Math.exp((-2 * Math.PI * cutoff) / rate)
   let lp = 0
   for (let i = 0; i < length; i++) {
@@ -102,7 +103,7 @@ export function synthesizeBed(context: BaseAudioContext, kind: 'waves' | 'underw
     lp += a * (Math.random() * 2 - 1 - lp)
     // Swells loop cleanly over the 8 s buffer (whole number of cycles).
     const swell = kind === 'waves' ? 0.45 + 0.35 * Math.sin((2 * Math.PI * t) / 4) + 0.2 * Math.sin((2 * Math.PI * t) / 8 + 1) : 1
-    out[i] = lp * swell * (kind === 'waves' ? 2.2 : 3)
+    out[i] = lp * swell * (kind === 'waves' ? 1.6 : 2)
   }
   return buffer
 }

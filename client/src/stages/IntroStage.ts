@@ -1,3 +1,4 @@
+import type { ButtonGuide } from '../ui/ControllerGuide'
 import * as THREE from 'three'
 import { disposeTree, type GameContext, type Stage } from '../core/Stage'
 import { Particles } from '../fx/Particles'
@@ -140,13 +141,22 @@ export class IntroStage implements Stage {
     game.hud.setPrompt('Walk: left stick · Turn: right stick · Grab: grip. Pick up a blunderbuss from the rack by the cabin.')
   }
 
+  guide(): ButtonGuide {
+    return {
+      left: ['Stick: walk', 'X: jump', 'Grip: grab / hold', 'Trigger: fire · pour'],
+      right: ['Stick: turn', 'A: jump', 'Grip: grab / hold', 'Trigger: fire · pour'],
+      desktop: ['<b>Deck</b>', 'Drag: look · WASD: walk · Space: jump', 'E: grab / drop · F: trigger · R: reload'],
+    }
+  }
+
   update(dt: number, elapsed: number): void {
     const { game } = this
     game.player.update(dt, game.inXr, game.desktop)
     this.gear.update()
     this.grab.update(dt, game.hands, game.player.physics.velocity, game.rig)
     this.range.update(dt)
-    this.darts.update(dt, game.hands)
+    this.darts.update(dt, game.hands, game.camera)
+    this.barrel.update(game.camera)
     this.crewBoard.update(dt, game.hands, game.bots.members(), game.net?.sessionId ?? 'me')
     this.updateDrunk(dt)
     this.crew.update(dt, elapsed)
@@ -521,6 +531,7 @@ export class IntroStage implements Stage {
         smoke: this.smoke,
         flash: this.fire,
         onFire: (origin, dirs) => this.onFire(origin, dirs),
+        desktop: () => !this.game.inXr,
       })
       this.guns.push(this.grab.add(gun))
     }

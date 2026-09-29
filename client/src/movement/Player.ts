@@ -1,3 +1,4 @@
+import { avatarGround } from '../net/RemotePlayers'
 import * as THREE from 'three'
 import type { Hand } from '../input/Hand'
 import type { DesktopControls } from '../input/DesktopControls'
@@ -72,6 +73,8 @@ export class Player {
   /** Switch environment (stage change). `bubbles` is where jet/exhale bubbles go underwater. */
   enter(env: PlayerEnvironment, spawn: THREE.Vector3, yaw: number, bubbles: Bubbles | null = null): void {
     this.env = env
+    // Every avatar in this stage (yours, the crew's, bots') keeps its body out of this ground.
+    avatarGround.at = env.kind === 'swim' ? (x, z) => env.floorHeight(x, z) : (x, z) => env.groundHeight(x, z)
     this.bubbles = bubbles
     this.checkpoint.copy(spawn)
     this.rig.position.copy(spawn)

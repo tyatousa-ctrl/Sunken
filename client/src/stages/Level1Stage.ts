@@ -1,3 +1,4 @@
+import type { ButtonGuide } from '../ui/ControllerGuide'
 import * as THREE from 'three'
 import { disposeTree, type GameContext, type Stage } from '../core/Stage'
 import type { Hand } from '../input/Hand'
@@ -182,7 +183,26 @@ export class Level1Stage implements Stage {
       this.onSettled()
     }
     game.player.checkpoint.copy(new THREE.Vector3(0, 0.8, 2))
+    game.hud.say(
+      game.inXr
+        ? 'Your backpack: press A or X (or reach over your shoulder and grip) to open it. Look at a controller to see what its buttons do.'
+        : 'Your backpack: press R to open it. The keys are listed in the corner.',
+      7,
+    )
     this.connectNet()
+  }
+
+  guide(): ButtonGuide {
+    return {
+      left: ['Grip + pull: swim', 'Trigger: bubble jet', 'X: backpack', 'Y: magic', 'Stick: drift · click: map'],
+      right: ['Grip + pull: swim', 'Trigger: bubble jet', 'A: backpack', 'B: class skill', 'Stick: turn · rise / sink'],
+      desktop: [
+        '<b>Diving</b>',
+        'WASD: swim · Space / Q: rise / sink · Shift: jets',
+        'E: grab / drop · R: backpack · M: map',
+        'B: class skill · 1 / 2 / 3: spells',
+      ],
+    }
   }
 
   update(dt: number, elapsed: number): void {
@@ -717,7 +737,7 @@ export class Level1Stage implements Stage {
     game.party.inventory.add(kind)
     game.audio.play('pop', item.object.getWorldPosition(this.v), 0.8)
     this.backpack.refresh()
-    if (kind === 'coin') this.teach('coin', 'Coins and gems go straight into your backpack. Press A/X to look inside.')
+    if (kind === 'coin') this.teach('coin', 'Coins and gems go straight into your backpack. Press A or X to look inside.')
     if (kind === 'gem') game.hud.now('A secret gem! +50', 3)
     if (kind === 'rune') {
       this.teach('rune', 'A tide rune! Runes power magic. Press Y, then hold the trigger, draw a circle, triangle or zigzag in the air, and let go.', 7)

@@ -99,6 +99,7 @@ export class Bot {
     const target = this.think(world, ctx)
     if (world.env.kind === 'swim') this.swim(dt, world, target)
     else this.walk(dt, world, target)
+    this.avatar.water = world.env.kind === 'swim' || this.head.y < world.env.waterY
     this.avatar.apply(this.buildPose())
   }
 

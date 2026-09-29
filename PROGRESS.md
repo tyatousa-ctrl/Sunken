@@ -184,6 +184,18 @@ Up to four divers per crew. Solo play still works with no server at all.
 
 **Not yet**: bots don't shoot clays, drink or play darts on deck (they walk with you); commanding a bot's skill works for the Strongman's heave and the Deep Diver's air (the other classes' skills are for humans for now); rune-locked doors arrive with the temple level.
 
+## Playtest fixes (after Milestone 6)
+
+From the first Quest playtest on Render:
+
+- **Quieter background sound.** The sea and underwater beds are about a third as loud and much softer (lower filter), and the jet hiss is halved. A **Background sound** slider on the start screen goes from silent to that level (default halfway).
+- **Button guide.** Raise a controller and turn it toward your face: a card over it lists what its buttons do right now (deck, dive, sandbox). It hides while that hand holds something, and can be turned off on the start screen ("Button guide on controller"). On desktop the keys are listed in the bottom-left corner.
+- **Backpack.** On arriving in Level 1 you're told "press A or X (or reach over your shoulder and grip) to open it".
+- **Beer.** A "Grog" sign floats over the barrel with the three steps (grip a mug, fill under the tap with the trigger, raise and tip to drink); the step you're on lights up.
+- **Darts.** A sign over the dart rack: grip a dart, stand behind the white line, swing and let go; which button does what. The step you're on lights up.
+- **Blunderbuss ammo.** A small display over the breech shows the shells loaded (●● 2 shells). At zero it says "Flick down to open" (or A/X, or R on desktop); open, it says "Flick up to load".
+- **Bodies.** You have your own diver body under the camera (no head, so it never blocks your view), coloured like your crew slot. Every body (yours, the crew's, the bots') is fitted to the ground under it: on deck it stretches from your head to the deck, so it matches your real height and bends when you crouch. Swimming, it leans forward, and near the seabed it lies flat, so legs never go into the ground. Your eyes now stay 0.5 m above the seabed (was 0.35 m), the height of a diver lying flat with a tank on.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.

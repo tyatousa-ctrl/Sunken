@@ -22,6 +22,18 @@ export interface AvatarInfo {
 
 // A diver: a masked head, a body hanging below it, two gloved hands, and a name tag.
 // Used for other players and for bots.
+/** Eye to the soles of the feet, for the avatar model at scale 1. */
+const BODY_LENGTH = 1.55
+/** Swimmers always lean forward a little. */
+const SWIM_LEAN = 0.35
+const MAX_COS_LEAN = Math.cos(SWIM_LEAN)
+
+/**
+ * Ground under a point in the current stage (deck, beach or seabed), or null over open water.
+ * Set by the player when a stage starts, and used to keep every avatar's body out of the floor.
+ */
+export const avatarGround: { at: ((x: number, z: number) => number | null) | null } = { at: null }
+
 export class Avatar {
   readonly group = new THREE.Group()
   readonly head = new THREE.Group()
@@ -71,6 +83,19 @@ export class Avatar {
     this.group.add(this.head, this.body, ...this.hands, this.tag)
   }
 
+  setColor(color: string): void {
+    this.color.color.set(color)
+  }
+
+  /** Your own body: no head (the camera is there), hands (the controllers are) or name tag. */
+  makeSelf(): void {
+    this.head.visible = false
+    this.tag.visible = false
+    for (const hand of this.hands) hand.visible = false
+    // Nudge the torso back a touch so looking down shows your chest, not the inside of it.
+    this.body.children.forEach((c) => (c.position.z += 0.06))
+  }
+
   setInfo(entry: AvatarInfo): void {
     this.color.color.set(entry.color)
     const text = entry.connected ? entry.name : `${entry.name} (reconnecting)`
@@ -107,11 +132,33 @@ export class Avatar {
     this.hands[0].quaternion.set(pose[10], pose[11], pose[12], pose[13])
     this.hands[1].position.set(pose[14], pose[15], pose[16])
     this.hands[1].quaternion.set(pose[17], pose[18], pose[19], pose[20])
-    // Body hangs under the head, turned with the head's yaw only.
-    this.body.position.copy(this.head.position)
-    const e = new THREE.Euler().setFromQuaternion(this.head.quaternion, 'YXZ')
-    this.body.rotation.set(0, e.y, 0)
+    this.poseBody()
     this.tag.position.set(pose[0], pose[1] + 0.32, pose[2])
+  }
+
+  /**
+   * Hang the body under the head, turned with the head's yaw. Standing, it stretches or squashes to
+   * reach the ground (so it matches your real height, and crouching bends it). Swimming, it leans
+   * back toward horizontal, all the way flat near the seabed, so legs never sink into the ground.
+   */
+  poseBody(): void {
+    const head = this.head.position
+    this.body.position.copy(head)
+    const e = new THREE.Euler().setFromQuaternion(this.head.quaternion, 'YXZ')
+    const floor = avatarGround.at?.(head.x, head.z) ?? null
+    const drop = floor === null ? BODY_LENGTH : head.y - floor
+    let lean = 0
+    let stretch = 1
+    if (this.water) {
+      // Lowest point of the tilted body: head.y - BODY_LENGTH * cos(lean) must stay above the floor.
+      const cos = THREE.MathUtils.clamp((drop - 0.12) / BODY_LENGTH, 0, MAX_COS_LEAN)
+      lean = Math.acos(cos)
+    } else {
+      stretch = THREE.MathUtils.clamp(drop / BODY_LENGTH, 0.45, 1.25)
+    }
+    // Negative pitch swings the legs out behind (+z is the back).
+    this.body.rotation.set(-lean, e.y, 0, 'YXZ')
+    this.body.scale.set(1, stretch, 1)
   }
 
   dispose(): void {
@@ -199,6 +246,7 @@ export class RemotePlayers {
       if (!avatar.group.visible) continue
       let i = s.length - 1
       while (i > 0 && s[i - 1].t > renderAt) i--
+      avatar.water = s[s.length - 1].water
       if (i === 0 || s[i].t <= renderAt) {
         avatar.apply(s[Math.min(i, s.length - 1)].pose)
       } else {
@@ -207,7 +255,6 @@ export class RemotePlayers {
         const t = THREE.MathUtils.clamp((renderAt - a.t) / Math.max(1, b.t - a.t), 0, 1)
         avatar.apply(blend(a.pose, b.pose, t, this.scratch))
       }
-      avatar.water = s[s.length - 1].water
     }
   }
 }
