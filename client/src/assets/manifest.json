@@ -1,0 +1,4 @@
+{
+  "$comment": "Every shipped asset must be listed here with its license. Fields: id, url (Macaly media URL), source, author, license, triangles, bytes. CREDITS.md is generated from this file.",
+  "assets": []
+}

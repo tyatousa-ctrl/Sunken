@@ -1,0 +1,24 @@
+{
+  "name": "sunken-sicily",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite --config client/vite.config.ts",
+    "build": "tsc -p client && vite build --config client/vite.config.ts",
+    "start": "tsx server/index.ts",
+    "typecheck": "tsc -p client && tsc -p server"
+  },
+  "dependencies": {
+    "three": "^0.186.1",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/three": "^0.186.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  }
+}

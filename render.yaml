@@ -1,0 +1,13 @@
+# Render Blueprint: one Node web service serves the WebXR client (and, from Milestone 5, the Colyseus server).
+services:
+  - type: web
+    name: sunken-sicily
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
