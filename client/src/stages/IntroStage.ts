@@ -102,6 +102,7 @@ export class IntroStage implements Stage {
   private phase: Phase = 'fakeout'
   private fakeoutTime = 0
   private pullCooldown = 0
+  private leverUsed = false
   private firstGunHeld = false
   private nudges = 0
   private broadsideYaw = 0
@@ -140,6 +141,14 @@ export class IntroStage implements Stage {
       onThrow: (at, vel, local) => game.net?.send('throwClay', { at: at.toArray(), vel: vel.toArray(), local }),
     })
     this.grab.add(this.range.stack)
+    this.grab.add(this.range.lever)
+    this.grab.add(this.range.countSwitch)
+    this.range.onLever = (count) => {
+      if (this.phase !== 'fakeout') return
+      // Someone's working the thrower: Salvo stops calling "Pull!" on his own.
+      this.leverUsed = true
+      this.pull(count)
+    }
     this.rigging = new Rigging(this.ship)
     this.cannons = new DeckCannons(this.root, this.ship, this.grab, {
       audio: game.audio,
@@ -485,9 +494,9 @@ export class IntroStage implements Stage {
     }
     if (this.firstGunHeld && this.game.record.clayShots >= 6) game.hud.setPrompt('')
 
-    // Salvo calls "Pull!" whenever someone's holding a gun and the sky is clear; the button works too.
-    if (range.checkButton(game.hands)) this.pull()
-    else if (gunHeld && !range.anyInFlight && this.pullCooldown === 0) this.pull()
+    // Until someone takes over the lever, Salvo calls "Pull!" whenever someone's holding a gun and the sky is clear.
+    range.countSwitch.touch(game.hands)
+    if (!this.leverUsed && gunHeld && !range.anyInFlight && this.pullCooldown === 0) this.pull(Math.random() < 0.3 ? 2 : 1)
 
     // Gentle nudges toward the ship in the bay. Nothing ever says to shoot it.
     const nudges: [number, () => void][] = [
@@ -501,17 +510,17 @@ export class IntroStage implements Stage {
     if (this.nudges < nudges.length && this.fakeoutTime >= nudges[this.nudges][0]) nudges[this.nudges++][1]()
   }
 
-  private pull(): void {
+  private pull(count: number): void {
     this.crew.get('Salvo').group.getWorldPosition(this.v)
     this.game.audio.play('whistle', this.v.setY(this.v.y + 1.6))
     this.pullCooldown = PULL_COOLDOWN + Math.random() * 1.5
     // In a crew there's one thrower: the server launches the clays for everybody.
     if (this.game.net) {
-      this.game.net.send('pull')
+      this.game.net.send('pull', { count })
       return
     }
     this.game.hud.say('Pull!', 1.2, 'Salvo')
-    this.range.pull(Math.random() < 0.3 ? 2 : 1)
+    this.range.pull(count)
   }
 
   private onFire(origin: THREE.Vector3, directions: THREE.Vector3[]): void {

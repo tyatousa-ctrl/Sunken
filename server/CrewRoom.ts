@@ -11,7 +11,7 @@ const LEVELS = new Map<string, LevelData>(
   ['level1', 'level2', 'level3'].map((id) => [id, JSON.parse(readFileSync(new URL(`../client/src/data/levels/${id}.json`, import.meta.url), 'utf8')) as LevelData]),
 )
 const POSE_LENGTH = 21
-const PULL_COOLDOWN_MS = 1500
+const PULL_COOLDOWN_MS = 1000
 const MAX_POINTS = 50
 
 // One crew of up to four. The server decides everything shared: who shot the ship first, clay
@@ -97,12 +97,14 @@ export class CrewRoom extends Room<{ state: CrewState }> {
     })
 
     // One thrower for the whole crew: the server launches every clay.
-    this.onMessage('pull', () => {
+    this.onMessage('pull', (_client, msg: { count?: number }) => {
       const now = Date.now()
       if (this.state.attackAt || now - this.lastPull < PULL_COOLDOWN_MS) return
       this.lastPull = now
-      const count = Math.random() < 0.3 ? 2 : 1
-      for (let i = 0; i < count; i++) this.broadcast('clay', { id: ++this.clayId, seed: Math.floor(Math.random() * 2 ** 31), delay: i * 0.3 })
+      // The thrower's switch says one or two; without it (older clients), mostly singles.
+      const count = msg?.count === 1 || msg?.count === 2 ? msg.count : Math.random() < 0.3 ? 2 : 1
+      // A pair leaves almost together (matches the client's CLAY_PAIR_GAP).
+      for (let i = 0; i < count; i++) this.broadcast('clay', { id: ++this.clayId, seed: Math.floor(Math.random() * 2 ** 31), delay: i * 0.12 })
     })
     // A player threw a clay by hand: give it a crew-wide id so hits count once, and show it to everyone.
     this.onMessage('throwClay', (client, msg: { at?: number[]; vel?: number[]; local?: number }) => {

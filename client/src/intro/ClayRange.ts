@@ -7,13 +7,22 @@ import { Label } from '../ui/Label'
 import { DECK_Y, halfWidthAt, type Galleon } from '../world/ship/Galleon'
 
 const GRAVITY = 9.8
+/** Seconds between the two clays of a pair: near enough together to be a double. */
+export const CLAY_PAIR_GAP = 0.12
 const CLAY_HIT_RADIUS = 0.4
 const MAX_CLAYS = 6
 /** A hand throw is too weak to fly far: speed it up (and keep it within a sporting range). */
 const HAND_THROW_BOOST = 2.6
 const HAND_THROW_MIN = 10
 const HAND_THROW_MAX = 19
-const BUTTON_COOLDOWN = 1.5
+/** Lever angles (radians about the panel's axis): at rest it leans away; pulled, it's toward you. */
+const LEVER_REST = -0.45
+const LEVER_PULLED = 0.75
+/** Pulled past this, the thrower fires; it re-arms once the lever is back near rest. */
+const LEVER_FIRE = 0.5
+const LEVER_REARM = -0.1
+const LEVER_LENGTH = 0.3
+const LEVER_COOLDOWN = 1.2
 
 interface Clay {
   id: number
@@ -39,22 +48,25 @@ export interface ClayFx {
   onThrow?: (at: THREE.Vector3, velocity: THREE.Vector3, localId: number) => void
 }
 
-// Clay pigeon shooting off the stern: a thrower on the starboard rail with a big pull button,
+// Clay pigeon shooting off the stern: a thrower on the starboard rail with a launch lever and a 1/2 switch,
 // clays that shatter or splash, and a wooden scoreboard on the main mast.
 export class ClayRange {
   readonly shooters: Shooter[] = [{ name: 'You', color: '#e8b930', hits: 0, shots: 0 }]
   readonly board: THREE.Mesh
   private readonly clays: Clay[] = []
   private readonly thrower = new THREE.Group()
-  private readonly button: THREE.Mesh
+  /** The control panel: pull the lever to launch; the switch picks one clay or two. */
+  readonly lever: ClayLever
+  readonly countSwitch: ClaySwitch
+  /** The lever was pulled: launch this many clays (1 or 2). */
+  onLever: (count: number) => void = () => {}
   /** Grab a clay off the stack and throw it yourself. */
   readonly stack: ClayStack
-  private readonly sign = new Label({ width: 0.7, canvasWidth: 600, canvasHeight: 300, billboard: true })
+  private readonly sign = new Label({ width: 0.75, canvasWidth: 600, canvasHeight: 380, billboard: true })
   private readonly boardCanvas = document.createElement('canvas')
   private readonly boardTexture: THREE.CanvasTexture
   private time = 0
   private localId = 0
-  private buttonCooldown = 0
   private boardBroken = false
   private readonly v = new THREE.Vector3()
   private readonly toClay = new THREE.Vector3()
@@ -74,18 +86,28 @@ export class ClayRange {
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.12), iron)
     arm.position.set(0.25, 0.6, 0)
     arm.rotation.z = 0.35
-    this.button = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.06, 16), new THREE.MeshStandardMaterial({ color: 0xc0271d, roughness: 0.4, emissive: 0x220000 }))
-    this.button.position.set(-0.15, 0.53, 0.18)
     const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.25, 16), new THREE.MeshStandardMaterial({ color: 0xd9632b, roughness: 0.8 }))
     stack.position.set(-0.12, 0.62, -0.15)
-    this.thrower.add(base, arm, this.button, stack)
+    this.thrower.add(base, arm, stack)
+    // Control panel on a post at the inboard side, facing the deck (-x), at hip height.
+    const panel = new THREE.Group()
+    panel.position.set(-0.45, 0, 0.25)
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.8, 0.08), wood)
+    post.position.y = 0.4
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.34), iron)
+    box.position.y = 0.9
+    panel.add(post, box)
+    this.thrower.add(panel)
+    this.lever = new ClayLever(panel, new THREE.Vector3(0, 1.0, -0.07), fx.audio, () => this.onLever(this.countSwitch.count))
+    this.countSwitch = new ClaySwitch(panel, new THREE.Vector3(-0.061, 0.9, 0.07), fx.audio)
     ship.shake.add(this.thrower)
     this.stack = new ClayStack(stack, this, clayGeometryFor())
     this.sign.mesh.position.set(0, 1.55, 0)
     this.thrower.add(this.sign.mesh)
     this.sign.set([
       { text: 'Clay Thrower', size: 40, bold: true, color: '#f2b64a' },
-      { text: 'Press the red button to launch', size: 28 },
+      { text: 'Pull the lever toward you to launch', size: 28 },
+      { text: 'Flip the switch for 1 or 2 clays at once', size: 28 },
       { text: 'or grab a clay from the stack and throw it out to sea', size: 28 },
       { text: 'for your crewmates to shoot', size: 24, color: '#b9c7cf' },
     ])
@@ -121,9 +143,9 @@ export class ClayRange {
     return this.clays.some((c) => c.alive || c.pendingAt >= 0)
   }
 
-  /** Launch one or two clays (solo play). */
+  /** Launch one or two clays (solo play); a pair leaves almost together. */
   pull(count: number): void {
-    for (let i = 0; i < count; i++) this.launchSeeded(++this.localId, Math.floor(Math.random() * 2 ** 31), i * 0.3)
+    for (let i = 0; i < count; i++) this.launchSeeded(++this.localId, Math.floor(Math.random() * 2 ** 31), i * CLAY_PAIR_GAP)
   }
 
   /** Keep the sign facing you. */
@@ -215,18 +237,6 @@ export class ClayRange {
     this.drawBoard()
   }
 
-  /** Touching the red button launches clays too. */
-  checkButton(hands: Hand[]): boolean {
-    if (this.buttonCooldown > 0) return false
-    this.button.getWorldPosition(this.v)
-    const hand = hands.find((h) => h.connected && !h.held && h.worldPos(new THREE.Vector3()).distanceTo(this.v) < 0.1)
-    if (!hand) return false
-    hand.pulse(0.5, 40)
-    this.buttonCooldown = BUTTON_COOLDOWN
-    this.fx.audio.play('thud', this.v)
-    return true
-  }
-
   breakBoard(): void {
     if (this.boardBroken) return
     this.boardBroken = true
@@ -238,7 +248,7 @@ export class ClayRange {
 
   update(dt: number): void {
     this.time += dt
-    this.buttonCooldown = Math.max(0, this.buttonCooldown - dt)
+    this.lever.tick(dt)
     for (const clay of this.clays) {
       if (clay.pendingAt >= 0 && this.time >= clay.pendingAt) this.launch(clay)
       if (!clay.alive) continue
@@ -367,5 +377,196 @@ export class ClayStack implements Interactable {
 
   setHighlight(on: boolean): void {
     ;(this.object.material as THREE.MeshStandardMaterial).emissive.setHex(on ? 0x2e7896 : 0x000000)
+  }
+}
+
+// The launch lever: grip the red knob and pull it toward you. Past the notch the thrower fires (a
+// clunk and a jolt in the hand); let go and it springs back, ready again.
+export class ClayLever implements Interactable {
+  readonly object = new THREE.Group()
+  readonly pullable = false
+  private readonly knob: THREE.Mesh
+  private holder: Hand | null = null
+  private angle = LEVER_REST
+  private armed = true
+  private cooldown = 0
+  private readonly v = new THREE.Vector3()
+
+  constructor(
+    panel: THREE.Object3D,
+    at: THREE.Vector3,
+    private readonly audio: AudioSystem,
+    private readonly fire: () => void,
+  ) {
+    const iron = new THREE.MeshStandardMaterial({ color: 0x2b2d30, roughness: 0.4, metalness: 0.7 })
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.06, 12).rotateX(Math.PI / 2), iron)
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, LEVER_LENGTH, 8), iron)
+    rod.position.y = LEVER_LENGTH / 2
+    this.knob = new THREE.Mesh(new THREE.SphereGeometry(0.035, 14, 10), new THREE.MeshStandardMaterial({ color: 0xc0271d, roughness: 0.35 }))
+    this.knob.position.y = LEVER_LENGTH
+    this.object.add(hub, rod, this.knob)
+    this.object.position.copy(at)
+    panel.add(this.object)
+    this.setAngle(LEVER_REST)
+  }
+
+  grabGap(point: THREE.Vector3, hand: Hand): number {
+    if (this.holder && this.holder !== hand) return Infinity
+    // Knob or anywhere on the upper half of the rod.
+    const knob = this.knob.getWorldPosition(this.v)
+    return Math.min(point.distanceTo(knob) - 0.05, point.distanceTo(this.object.localToWorld(this.v.set(0, LEVER_LENGTH * 0.6, 0))) - 0.04)
+  }
+
+  grab(hand: Hand): void {
+    hand.pulse(0.3, 30)
+    // Keyboard and mouse: one grab is one full pull.
+    if (hand.virtual) {
+      this.setAngle(LEVER_PULLED)
+      this.trigger(hand)
+      this.armed = true
+      hand.held = null
+      return
+    }
+    this.holder = hand
+  }
+
+  release(hand: Hand): void {
+    if (hand === this.holder) this.holder = null
+  }
+
+  setHighlight(on: boolean): void {
+    ;(this.knob.material as THREE.MeshStandardMaterial).emissive.setHex(on ? 0x5a2020 : 0x000000)
+  }
+
+  update(): void {
+    const hand = this.holder
+    if (!hand) return
+    // The hand's position round the pivot, in the panel's frame: toward the deck (-x) is "pulled".
+    const local = this.object.parent!.worldToLocal(hand.worldPos(this.v)).sub(this.object.position)
+    const target = THREE.MathUtils.clamp(Math.atan2(-local.x, Math.max(0.02, local.y)), LEVER_REST, LEVER_PULLED)
+    this.setAngle(target)
+    if (this.armed && this.angle > LEVER_FIRE) this.trigger(hand)
+    if (!this.armed && this.angle < LEVER_REARM) this.armed = true
+  }
+
+  /** Springs back when nobody holds it. */
+  tick(dt: number): void {
+    this.cooldown = Math.max(0, this.cooldown - dt)
+    if (this.holder) return
+    this.setAngle(this.angle + (LEVER_REST - this.angle) * (1 - Math.exp(-10 * dt)))
+    if (this.angle < LEVER_REARM) this.armed = true
+  }
+
+  private trigger(hand: Hand): void {
+    this.armed = false
+    this.object.getWorldPosition(this.v)
+    this.audio.play('thud', this.v, 0.9)
+    hand.pulse(0.8, 70)
+    if (this.cooldown > 0) return
+    this.cooldown = LEVER_COOLDOWN
+    this.fire()
+  }
+
+  private setAngle(angle: number): void {
+    this.angle = angle
+    // Positive tips the top toward -x (the deck side, toward whoever's pulling).
+    this.object.rotation.z = angle
+  }
+}
+
+// A toggle switch on the panel: flip it (touch or grip it) between 1 and 2 clays per pull.
+export class ClaySwitch implements Interactable {
+  readonly object = new THREE.Group()
+  readonly pullable = false
+  count: 1 | 2 = 1
+  private readonly bat: THREE.Mesh
+  private readonly plate: THREE.Mesh
+  private readonly canvas = document.createElement('canvas')
+  private readonly texture: THREE.CanvasTexture
+  private touchCooldown = 0
+  private touching = false
+  private readonly v = new THREE.Vector3()
+
+  constructor(
+    panel: THREE.Object3D,
+    at: THREE.Vector3,
+    private readonly audio: AudioSystem,
+  ) {
+    this.canvas.width = 256
+    this.canvas.height = 128
+    this.texture = new THREE.CanvasTexture(this.canvas)
+    this.texture.colorSpace = THREE.SRGBColorSpace
+    // The plate faces the deck (-x).
+    this.plate = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.1), new THREE.MeshBasicMaterial({ map: this.texture }))
+    this.plate.rotation.y = -Math.PI / 2
+    const brass = new THREE.MeshStandardMaterial({ color: 0xc19a3e, roughness: 0.35, metalness: 0.8 })
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.012, 12).rotateZ(Math.PI / 2), brass)
+    collar.position.x = -0.006
+    // The bat sticks out toward the deck and tips left (1) or right (2).
+    this.bat = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.009, 0.05, 8).translate(0, 0.025, 0).rotateZ(Math.PI / 2), brass)
+    this.bat.position.x = -0.012
+    this.object.add(this.plate, collar, this.bat)
+    this.object.position.copy(at)
+    panel.add(this.object)
+    this.set(1, false)
+  }
+
+  grabGap(point: THREE.Vector3): number {
+    return point.distanceTo(this.object.getWorldPosition(this.v)) - 0.06
+  }
+
+  grab(hand: Hand): void {
+    this.flip(hand)
+    hand.held = null
+  }
+
+  release(): void {}
+
+  setHighlight(on: boolean): void {
+    ;(this.bat.material as THREE.MeshStandardMaterial).emissive.setHex(on ? 0x2e7896 : 0x000000)
+  }
+
+  update(dt: number): void {
+    this.touchCooldown = Math.max(0, this.touchCooldown - dt)
+  }
+
+  /** Poke it with a hand (any hand, even one holding a gun) to flip it too. */
+  touch(hands: Hand[]): void {
+    this.object.getWorldPosition(this.v)
+    const hand = hands.find((h) => h.connected && h.worldPos(new THREE.Vector3()).distanceTo(this.v) < 0.09)
+    if (hand && !this.touching && this.touchCooldown === 0) this.flip(hand)
+    this.touching = !!hand
+  }
+
+  private flip(hand: Hand): void {
+    this.touchCooldown = 0.5
+    this.set(this.count === 1 ? 2 : 1, true)
+    hand.pulse(0.4, 30)
+  }
+
+  private set(count: 1 | 2, sound: boolean): void {
+    this.count = count
+    // Tipped toward the "1" (ship-forward, -z) side or the "2" side.
+    this.bat.rotation.set(0, count === 1 ? -0.5 : 0.5, 0)
+    if (sound) this.audio.play('click', this.object.getWorldPosition(this.v), 0.8)
+    const ctx = this.canvas.getContext('2d')!
+    ctx.fillStyle = '#1b1d20'
+    ctx.fillRect(0, 0, 256, 128)
+    ctx.font = 'bold 22px monospace'
+    ctx.fillStyle = '#c9b98f'
+    ctx.textAlign = 'center'
+    ctx.fillText('CLAYS', 128, 26)
+    ctx.font = 'bold 64px monospace'
+    for (const [n, x] of [[1, 48], [2, 208]] as const) {
+      const on = n === count
+      ctx.fillStyle = on ? '#ffcf4a' : '#4a4a4a'
+      ctx.fillText(String(n), x, 104)
+      if (on) {
+        ctx.beginPath()
+        ctx.arc(x, 44, 7, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+    this.texture.needsUpdate = true
   }
 }
