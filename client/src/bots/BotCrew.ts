@@ -104,6 +104,8 @@ export class BotCrew {
 
     const humans = this.humans()
     for (const bot of this.bots.values()) {
+      // Dressed for where they are (pirate on deck, diver in the water).
+      bot.avatar.stage = this.stageId
       bot.update(dt, world, {
         now: this.clock,
         humans,

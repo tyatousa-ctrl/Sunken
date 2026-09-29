@@ -40,6 +40,8 @@ export class Player {
   inWater = false
   /** On the rigging (gripping the net, or hanging on it): no gravity, no walking. */
   climbing = false
+  /** Sliding down the zipline: the ride moves you (no gravity, no walking). */
+  riding = false
   /** A/X does something else here (climbing in or out of the nest): don't jump. */
   noJump = false
   lastResult: SwimResult = { thrust: [], stroking: false, jetting: false }
@@ -162,6 +164,13 @@ export class Player {
     this.lastResult.thrust.fill(0)
     const lift = this.seated ? SEATED_LIFT : 0
 
+    if (this.riding) {
+      this.verticalSpeed = 0
+      this.grounded = false
+      this.climbing = false
+      this.physics.velocity.set(0, 0, 0)
+      return
+    }
     // Climbing: hands gripping the net pull you along (no gravity, no walking).
     if (this.hands.some((h) => h.connected && h.anchor)) {
       this.applyAnchors(dt)

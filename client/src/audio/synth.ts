@@ -21,6 +21,7 @@ export type SfxName =
   | 'clang'
   | 'slash'
   | 'swish'
+  | 'zip'
 
 interface Recipe {
   seconds: number
@@ -63,6 +64,8 @@ const RECIPES: Record<SfxName, Recipe> = {
   // Swords: blades ringing off each other, a blade finding a body, and a fast swing through the air.
   clang: { seconds: 1.1, noise: 0.8, highpass: 3000, decay: 0.012, partials: [[1187, 0.55, 0.45], [2731, 0.4, 0.3], [3962, 0.28, 0.2], [5213, 0.16, 0.12], [823, 0.2, 0.6]], gain: 0.7 },
   slash: { seconds: 0.25, noise: 1, lowpass: 900, highpass: 150, thump: [140, 0.4], decay: 0.06, gain: 0.45 },
+  // Rope running through a gloved hand on the zipline (repeated while sliding).
+  zip: { seconds: 0.45, noise: 1, lowpass: 3800, highpass: 1200, tone: [300, 260, 0.15], attack: 0.04, decay: 0.2, gain: 0.25 },
   swish: { seconds: 0.3, noise: 1, lowpass: 2500, highpass: 600, attack: 0.07, decay: 0.07, gain: 0.22 },
 }
 

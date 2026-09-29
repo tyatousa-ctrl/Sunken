@@ -250,6 +250,7 @@ export class Game implements GameContext {
     this.camera.getWorldPosition(body.head.position)
     this.camera.getWorldQuaternion(body.head.quaternion)
     body.water = this.player.env?.kind === 'swim' || this.player.inWater
+    body.stage = this.stage?.id ?? ''
     body.poseBody()
   }
 

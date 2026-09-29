@@ -20,7 +20,8 @@ export interface AvatarInfo {
   bot?: boolean
 }
 
-// A diver: a masked head, a body hanging below it, two gloved hands, and a name tag.
+// A crew member: a head, a body hanging below it, two hands and a name tag, dressed as a pirate on
+// deck and as a diver in the water.
 // Used for other players and for bots.
 /** Eye to the soles of the feet, for the avatar model at scale 1. */
 const BODY_LENGTH = 1.55
@@ -34,6 +35,13 @@ const MAX_COS_LEAN = Math.cos(SWIM_LEAN)
  */
 export const avatarGround: { at: ((x: number, z: number, below?: number) => number | null) | null } = { at: null }
 
+export type Outfit = 'pirate' | 'scuba'
+
+/** Pirate dress on the ship's deck; dive gear once in the water, and in every dive level. */
+export function outfitFor(stage: string, water: boolean): Outfit {
+  return stage === 'intro' && !water ? 'pirate' : 'scuba'
+}
+
 export class Avatar {
   readonly group = new THREE.Group()
   readonly head = new THREE.Group()
@@ -46,6 +54,13 @@ export class Avatar {
   private readonly tagCanvas = document.createElement('canvas')
   private tagText = ''
   private readonly color: THREE.MeshStandardMaterial
+  private readonly scubaHead = new THREE.Group()
+  private readonly scubaBody = new THREE.Group()
+  private readonly pirateHead = new THREE.Group()
+  private readonly pirateBody = new THREE.Group()
+  private readonly gloves: THREE.Mesh[] = []
+  private readonly bareHands: THREE.Mesh[] = []
+  outfit: Outfit = 'scuba'
 
   constructor(color: string) {
     this.color = new THREE.MeshStandardMaterial({ color, roughness: 0.6 })
@@ -54,13 +69,15 @@ export class Avatar {
     const glass = new THREE.MeshStandardMaterial({ color: 0x9fd8ee, roughness: 0.05, transparent: true, opacity: 0.5 })
 
     const skull = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 10), skin)
+    this.head.add(skull)
+    // Diving: a cap in your crew colour, a mask, a tank on your back, gloves.
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.115, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), this.color)
     const mask = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.07, 0.04), dark)
     mask.position.set(0, 0.01, -0.1)
     const lens = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.055), glass)
     lens.position.set(0, 0.01, -0.121)
     lens.rotation.y = Math.PI
-    this.head.add(skull, cap, mask, lens)
+    this.scubaHead.add(cap, mask, lens)
 
     const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.45, 4, 10), this.color)
     torso.position.y = -0.52
@@ -68,12 +85,65 @@ export class Avatar {
     tank.position.set(0, -0.45, 0.2)
     const legs = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.6, 4, 8), dark)
     legs.position.y = -1.05
-    this.body.add(torso, tank, legs)
+    this.scubaBody.add(torso, tank, legs)
+
+    // On deck: a pirate. Tricorn hat, a bandana in your crew colour, an eye patch, a loose shirt
+    // with a crew-colour waistcoat and sash, a belt with a brass buckle, breeches and boots.
+    const black = new THREE.MeshStandardMaterial({ color: 0x17161a, roughness: 0.8 })
+    const brass = new THREE.MeshStandardMaterial({ color: 0xc9a13e, roughness: 0.35, metalness: 0.8 })
+    const shirt = new THREE.MeshStandardMaterial({ color: 0xe9e0c9, roughness: 0.9 })
+    const breeches = new THREE.MeshStandardMaterial({ color: 0x4a3524, roughness: 0.9 })
+    const bandana = new THREE.Mesh(new THREE.SphereGeometry(0.117, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), this.color)
+    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.1, 3), black)
+    // One corner of the tricorn to the front.
+    hat.rotation.y = Math.PI
+    hat.position.y = 0.1
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.012, 3), black)
+    brim.rotation.y = Math.PI
+    brim.position.y = 0.06
+    const trim = new THREE.Mesh(new THREE.TorusGeometry(0.155, 0.006, 4, 3), brass)
+    trim.rotation.set(Math.PI / 2, 0, Math.PI / 2)
+    trim.position.y = 0.066
+    const patch = new THREE.Mesh(new THREE.CircleGeometry(0.024, 12), black)
+    patch.position.set(0.04, 0.02, -0.109)
+    patch.rotation.y = Math.PI + 0.35
+    const strap = new THREE.Mesh(new THREE.TorusGeometry(0.113, 0.004, 4, 24), black)
+    strap.rotation.set(0.35, 0, 0.5)
+    strap.position.y = 0.02
+    this.pirateHead.add(bandana, hat, brim, trim, patch, strap)
+
+    const blouse = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.45, 4, 10), shirt)
+    blouse.position.y = -0.52
+    // Waistcoat: a shell over the shirt, open down the front (the avatar faces -z).
+    const vestBack = new THREE.Mesh(new THREE.CylinderGeometry(0.182, 0.182, 0.36, 12, 1, true, -Math.PI * 0.8, Math.PI * 1.6), this.color)
+    vestBack.position.y = -0.5
+    const sash = new THREE.Mesh(new THREE.TorusGeometry(0.175, 0.03, 6, 16), this.color)
+    sash.rotation.x = Math.PI / 2
+    sash.position.y = -0.8
+    const belt = new THREE.Mesh(new THREE.TorusGeometry(0.178, 0.018, 4, 16), black)
+    belt.rotation.x = Math.PI / 2
+    belt.position.y = -0.74
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.045, 0.012), brass)
+    buckle.position.set(0, -0.74, -0.19)
+    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.02), this.color)
+    knot.position.set(0.14, -0.88, -0.1)
+    knot.rotation.set(0.2, 0.6, 0.25)
+    const trousers = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.6, 4, 8), breeches)
+    trousers.position.y = -1.05
+    const boots = new THREE.Mesh(new THREE.CylinderGeometry(0.135, 0.125, 0.24, 10), black)
+    boots.position.y = -1.36
+    this.pirateBody.add(blouse, vestBack, sash, belt, buckle, knot, trousers, boots)
+    this.head.add(this.scubaHead, this.pirateHead)
+    this.body.add(this.scubaBody, this.pirateBody)
 
     for (const hand of this.hands) {
       const glove = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.035, 0.12), this.color)
-      hand.add(glove)
+      const bare = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.032, 0.11), skin)
+      hand.add(glove, bare)
+      this.gloves.push(glove)
+      this.bareHands.push(bare)
     }
+    this.setOutfit('scuba')
 
     this.tagCanvas.width = 384
     this.tagCanvas.height = 64
@@ -81,6 +151,15 @@ export class Avatar {
     this.tag.scale.set(0.6, 0.1, 1)
     this.tag.renderOrder = 700
     this.group.add(this.head, this.body, ...this.hands, this.tag)
+  }
+
+  setOutfit(outfit: Outfit): void {
+    this.outfit = outfit
+    const pirate = outfit === 'pirate'
+    this.pirateHead.visible = this.pirateBody.visible = pirate
+    this.scubaHead.visible = this.scubaBody.visible = !pirate
+    for (const g of this.gloves) g.visible = !pirate
+    for (const b of this.bareHands) b.visible = pirate
   }
 
   setColor(color: string): void {
@@ -152,6 +231,8 @@ export class Avatar {
    * back toward horizontal, all the way flat near the seabed, so legs never sink into the ground.
    */
   poseBody(): void {
+    const outfit = outfitFor(this.stage, this.water)
+    if (outfit !== this.outfit) this.setOutfit(outfit)
     const head = this.head.position
     this.body.position.copy(head)
     const e = new THREE.Euler().setFromQuaternion(this.head.quaternion, 'YXZ')

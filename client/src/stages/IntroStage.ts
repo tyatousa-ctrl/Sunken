@@ -26,6 +26,7 @@ import { PERCH_SPOT, Quarterdeck, STAIRS } from '../intro/Quarterdeck'
 import { Sailing, type SailState } from '../intro/Sailing'
 import { CrackerPack, Parrot, type PollyState } from '../intro/Parrot'
 import { Swords, type SwordTarget } from '../intro/Swords'
+import { Zipline } from '../intro/Zipline'
 import { Level1Stage } from './Level1Stage'
 
 /** The "harmless merchant" anchored in the bay, ~150 m off the starboard bow. */
@@ -73,6 +74,7 @@ export class IntroStage implements Stage {
   // The rigging net is a handhold: grip it to climb.
   private readonly grab = new GrabSystem({ rocks: [], climb: (p) => this.rigging?.onNet(p, 0.12) ?? false })
   private rigging!: Rigging
+  private zipline!: Zipline
   private cannons!: DeckCannons
   /** The prompt the rigging put up (so we only clear our own). */
   private riggingPrompt = ''
@@ -150,6 +152,8 @@ export class IntroStage implements Stage {
       this.pull(count)
     }
     this.rigging = new Rigging(this.ship)
+    this.zipline = new Zipline(this.ship, game.rig, game.player, game.audio)
+    this.grab.add(this.zipline)
     this.cannons = new DeckCannons(this.root, this.ship, this.grab, {
       audio: game.audio,
       smoke: this.smoke,
@@ -252,6 +256,7 @@ export class IntroStage implements Stage {
     this.syncNet(dt)
     this.swords.update(dt, game.halfHeight)
     this.swords.face(game.camera)
+    this.zipline.face(game.camera)
     if (this.phase === 'fakeout') this.updateFakeout(dt)
     else if (this.phase === 'attack') this.updateAttack(dt, elapsed)
 
@@ -284,7 +289,9 @@ export class IntroStage implements Stage {
     this.root.attach(this.enemy.group)
     this.aimEnemyAtUs()
     // Anyone up the rigging is back on deck: the mast is about to take hits.
-    if (game.player.climbing || this.rigging.inNest(game.camera.getWorldPosition(this.v))) {
+    const sliding = this.zipline.riding
+    this.zipline.forceRelease()
+    if (sliding || game.player.climbing || this.rigging.inNest(game.camera.getWorldPosition(this.v))) {
       game.player.placeFeet(this.rigging.footOfNet(this.v))
       game.player.noJump = false
     }
