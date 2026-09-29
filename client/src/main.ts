@@ -42,5 +42,11 @@ turnSelect.addEventListener('change', () => {
   saveSettings(settings)
 })
 
+// No WebXR (e.g. iPhone Safari): say where the game can actually be played.
+const xr = (navigator as Navigator & { xr?: { isSessionSupported(mode: string): Promise<boolean> } }).xr
+const showNoXr = () => ((document.getElementById('no-xr') as HTMLElement).hidden = false)
+if (!xr) showNoXr()
+else xr.isSessionSupported('immersive-vr').then((ok) => ok || showNoXr(), showNoXr)
+
 // Test hook: `?debug` exposes the game object for automated browser tests and console poking.
 if (params.has('debug')) Object.assign(window, { sunken: game })

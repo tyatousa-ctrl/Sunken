@@ -6,7 +6,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #03203a; fon
 #intro p { margin: 4px 0 12px; opacity: 0.85; }
 #intro .options { display: grid; gap: 8px; margin-bottom: 10px; }
 #intro label { display: flex; gap: 8px; align-items: center; justify-content: space-between; cursor: pointer; }
-#intro label:first-child { justify-content: flex-start; }
+#intro label:has(input[type=checkbox]) { justify-content: flex-start; }
 #intro select { background: #0b2c45; color: inherit; border: 1px solid #2d6f8c; border-radius: 6px; padding: 4px 6px; font: inherit; }
 #intro details { font-size: 14px; opacity: 0.85; }
 #intro summary { cursor: pointer; }
@@ -16,5 +16,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #03203a; fon
 .fps-dom { top: 12px; }
 .dive-dom { top: 40px; }
 .dive-dom.low { color: #ffb347; }
-.hud-dom { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); max-width: min(720px, calc(100% - 32px)); padding: 8px 14px; border-radius: 10px; background: rgba(0,0,0,0.65); font: 600 15px/1.35 system-ui, sans-serif; text-align: center; pointer-events: none; }
+.hud-dom { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); width: max-content; max-width: min(720px, calc(100% - 32px)); box-sizing: border-box; padding: 8px 14px; border-radius: 10px; background: rgba(0,0,0,0.65); font: 600 15px/1.35 system-ui, sans-serif; text-align: center; pointer-events: none; }
 body.in-xr .hud-dom, body.in-xr .dive-dom { display: none; }
+#intro .note { background: rgba(232, 185, 48, 0.15); border: 1px solid rgba(232, 185, 48, 0.5); border-radius: 8px; padding: 8px 10px; font-size: 14px; opacity: 1; }
+/* Phones: the readouts sit above the title card instead of on top of it. */
+@media (max-width: 600px) {
+  #intro { top: 84px; max-height: calc(100% - 180px); }
+  .fps-dom, .dive-dom { left: 16px; right: auto; }
+}
