@@ -18,6 +18,9 @@ export type SfxName =
   | 'coo'
   | 'squawk'
   | 'crunch'
+  | 'clang'
+  | 'slash'
+  | 'swish'
 
 interface Recipe {
   seconds: number
@@ -34,6 +37,8 @@ interface Recipe {
   decay: number
   /** Echo delays (s) and gains: cliffs bouncing a gunshot back. */
   echoes?: [delay: number, gain: number][]
+  /** Ringing partials, each with its own decay (s): struck metal. */
+  partials?: [freq: number, amount: number, decay: number][]
   gain?: number
 }
 
@@ -55,6 +60,10 @@ const RECIPES: Record<SfxName, Recipe> = {
   coo: { seconds: 0.7, tone: [430, 330, 1], vibrato: [7, 25], noise: 0.08, lowpass: 700, attack: 0.08, decay: 0.3, gain: 0.35 },
   squawk: { seconds: 0.45, tone: [1350, 950, 0.7], vibrato: [38, 260], noise: 0.5, highpass: 900, lowpass: 3500, attack: 0.01, decay: 0.16, gain: 0.45 },
   crunch: { seconds: 0.12, noise: 1, highpass: 1400, lowpass: 5000, decay: 0.025, gain: 0.35 },
+  // Swords: blades ringing off each other, a blade finding a body, and a fast swing through the air.
+  clang: { seconds: 1.1, noise: 0.8, highpass: 3000, decay: 0.012, partials: [[1187, 0.55, 0.45], [2731, 0.4, 0.3], [3962, 0.28, 0.2], [5213, 0.16, 0.12], [823, 0.2, 0.6]], gain: 0.7 },
+  slash: { seconds: 0.25, noise: 1, lowpass: 900, highpass: 150, thump: [140, 0.4], decay: 0.06, gain: 0.45 },
+  swish: { seconds: 0.3, noise: 1, lowpass: 2500, highpass: 600, attack: 0.07, decay: 0.07, gain: 0.22 },
 }
 
 export function synthesize(context: BaseAudioContext, name: SfxName): AudioBuffer {
@@ -95,6 +104,7 @@ export function synthesize(context: BaseAudioContext, name: SfxName): AudioBuffe
       s += Math.sin(tonePhase) * r.tone[2]
     }
     dry[i] = s * env
+    for (const [f, amount, decay] of r.partials ?? []) dry[i] += Math.sin(2 * Math.PI * f * t) * amount * Math.exp(-t / decay)
   }
   const buffer = context.createBuffer(1, length, rate)
   const out = buffer.getChannelData(0)

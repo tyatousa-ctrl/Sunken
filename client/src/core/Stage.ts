@@ -8,7 +8,7 @@ import type { Hud } from '../ui/Hud'
 import type { WristComputer } from '../ui/WristComputer'
 import type { Inventory } from '../systems/Inventory'
 import type { NetClient } from '../net/NetClient'
-import type { RemotePlayers } from '../net/RemotePlayers'
+import type { Avatar, RemotePlayers } from '../net/RemotePlayers'
 import type { BotCrew } from '../bots/BotCrew'
 import type { Settings } from './settings'
 import type { ButtonGuide } from '../ui/ControllerGuide'
@@ -55,6 +55,8 @@ export interface GameContext {
   /** The crew connection, or null when playing solo. */
   net: NetClient | null
   remote: RemotePlayers | null
+  /** Your own body as others see it (for things that strike it). */
+  readonly selfBody: Avatar
   bots: BotCrew
   /** The hands in use this frame: both controllers in VR, the virtual hand on desktop. */
   readonly hands: Hand[]

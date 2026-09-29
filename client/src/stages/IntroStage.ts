@@ -25,6 +25,7 @@ import { DeckCannons, MATCH_CRATE } from '../intro/DeckCannons'
 import { PERCH_SPOT, Quarterdeck, STAIRS } from '../intro/Quarterdeck'
 import { Sailing, type SailState } from '../intro/Sailing'
 import { CrackerPack, Parrot, type PollyState } from '../intro/Parrot'
+import { Swords, type SwordTarget } from '../intro/Swords'
 import { Level1Stage } from './Level1Stage'
 
 /** The "harmless merchant" anchored in the bay, ~150 m off the starboard bow. */
@@ -86,6 +87,9 @@ export class IntroStage implements Stage {
   private above!: AboveWater
   private range!: ClayRange
   private crew!: Crew
+  private swords!: Swords
+  /** Which hand (0 left, 1 right) each crewmate holds their sword in, by sword id. */
+  private readonly swordHands = new Map<string, 0 | 1>()
   private gear!: GearRack
   private barrel!: BeerBarrel
   private crewBoard!: CrewBoard
@@ -147,6 +151,12 @@ export class IntroStage implements Stage {
       onFire: (i) => game.net?.send('cannon', { i }),
     })
     this.crew = new Crew(this.ship, this.root)
+    this.swords = new Swords(this.ship.shake, this.root, {
+      audio: game.audio,
+      targets: () => this.swordTargets(),
+      floor: (x, z) => this.walkEnv.groundHeight(x, z, DECK_Y + 3),
+    })
+    for (const sword of this.swords.swords) this.grab.add(sword)
     this.quarterdeck = new Quarterdeck(this.ship, this.grab, game.audio)
     // Polly perches on her stand by the helm, facing the wheel.
     const perch = new THREE.Object3D()
@@ -165,6 +175,10 @@ export class IntroStage implements Stage {
     this.grab.add(new CrackerPack(this.quarterdeck.table, this.polly, game.audio))
     this.gear = new GearRack(this.ship, this.grab, game.camera, game.audio, (hand) => this.grab.drop(hand))
     this.gear.onChange = (piece) => this.onGear(piece)
+    this.gear.onLocked = (hand) => {
+      hand.pulse(0.2, 40)
+      game.hud.now('The scuba gear is chained up. No need for it on a fine day like this… yet.', 3)
+    }
     this.barrel = new BeerBarrel(this.ship, this.grab, {
       audio: game.audio,
       beer: this.splash,
@@ -227,6 +241,8 @@ export class IntroStage implements Stage {
     for (const p of [this.smoke, this.fire, this.debris, this.splash]) p.update(dt, game.halfHeight)
 
     this.syncNet(dt)
+    this.swords.update(dt, game.halfHeight)
+    this.swords.face(game.camera)
     if (this.phase === 'fakeout') this.updateFakeout(dt)
     else if (this.phase === 'attack') this.updateAttack(dt, elapsed)
 
@@ -249,6 +265,7 @@ export class IntroStage implements Stage {
     if (this.phase !== 'fakeout') return
     const { game } = this
     this.phase = 'attack'
+    this.gear.unlock()
     game.record.whoShotFirst = shooter
     game.audio.silence(1.2)
     game.hud.clear()
@@ -264,6 +281,7 @@ export class IntroStage implements Stage {
     }
     // Beer and darts are over; everybody's needed now.
     for (const mug of this.barrel.mugs) mug.dropNow()
+    for (const sword of this.swords.swords) sword.forceDrop()
     this.attack = new AttackSequence(this.root, this.ship, this.enemy, this.broadsideYaw, {
       audio: game.audio,
       smoke: this.smoke,
@@ -331,6 +349,15 @@ export class IntroStage implements Stage {
       gun.onGrabbed = () => net.send('claim', { id })
       gun.onReleased = () => net.send('release', { id })
     })
+    this.swords.swords.forEach((sword, i) => {
+      const id = `sword${i}`
+      sword.onGrabbed = (hand) => {
+        net.send('claim', { id })
+        net.send('swordHand', { id, hand: hand.handedness === 'left' ? 0 : 1 })
+      }
+      sword.onReleased = () => net.send('release', { id })
+    })
+    on<{ id: string; hand: number }>('swordHand', (msg) => this.swordHands.set(msg.id, msg.hand === 0 ? 0 : 1))
     on<{ id: string }>('claimDenied', (msg) => {
       if (msg.id === 'wheel') {
         for (const hand of this.game.hands) if (hand.held === this.quarterdeck.wheel) {
@@ -338,6 +365,11 @@ export class IntroStage implements Stage {
           this.quarterdeck.wheel.release(hand)
         }
         this.game.hud.now('Someone else has the helm.', 2)
+        return
+      }
+      if (msg.id.startsWith('sword')) {
+        this.swords.swords[Number(msg.id.replace('sword', ''))]?.forceDrop()
+        this.game.hud.now('Someone beat you to that sword.', 2)
         return
       }
       const gun = this.guns[Number(msg.id.replace('gun', ''))]
@@ -377,6 +409,36 @@ export class IntroStage implements Stage {
     if (net.state?.attackAt) this.joinAttack(net.state.attackAt, net.state.shooter)
   }
 
+  /** Everyone a blade could cut: you, your crewmates, the bots and the ship's sailors. */
+  private swordTargets(): SwordTarget[] {
+    const { game } = this
+    const targets: SwordTarget[] = []
+    if (game.selfBody.group.visible) {
+      targets.push({
+        id: 'self',
+        spheres: game.selfBody.hitSpheres(),
+        onHit: () => {
+          for (const hand of game.hands) hand.pulse(0.35, 90)
+        },
+      })
+    }
+    for (const [id, avatar] of game.remote?.visibleAvatars() ?? []) targets.push({ id, spheres: avatar.hitSpheres() })
+    for (const [id, bot] of game.bots.bots) if (bot.avatar.group.visible) targets.push({ id, spheres: bot.avatar.hitSpheres() })
+    for (const sailor of this.crew.sailors) {
+      const g = sailor.group
+      g.updateMatrixWorld(true)
+      targets.push({
+        id: `sailor:${sailor.spec.name}`,
+        spheres: [
+          { center: g.localToWorld(new THREE.Vector3(0, 1.62, 0)), radius: 0.15 },
+          { center: g.localToWorld(new THREE.Vector3(0, 1.15, 0)), radius: 0.24 },
+          { center: g.localToWorld(new THREE.Vector3(0, 0.6, 0)), radius: 0.19 },
+        ],
+      })
+    }
+    return targets
+  }
+
   private joinAttack(at: number, shooter: string): void {
     const net = this.game.net!
     const name = shooter === net.me()?.name ? 'You' : shooter
@@ -392,6 +454,13 @@ export class IntroStage implements Stage {
     this.guns.forEach((gun, i) => {
       const owner: string | undefined = net.state?.claims?.get(`gun${i}`)
       gun.setRemoteHand(owner && owner !== net.sessionId ? remote.hand(owner, 1) : null)
+    })
+    // Swords held by someone else ride in the hand they drew with.
+    this.swords.swords.forEach((sword, i) => {
+      const id = `sword${i}`
+      const owner: string | undefined = net.state?.claims?.get(id)
+      const theirs = owner && owner !== net.sessionId ? owner : null
+      sword.setRemoteHand(theirs ? remote.hand(theirs, this.swordHands.get(id) ?? 1) : null, theirs)
     })
     this.boardTimer -= dt
     if (this.boardTimer <= 0) {

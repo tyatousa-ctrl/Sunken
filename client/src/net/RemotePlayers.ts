@@ -96,6 +96,16 @@ export class Avatar {
     this.body.children.forEach((c) => (c.position.z += 0.06))
   }
 
+  /** Rough body volume (world spheres: head, chest, hips) for things that strike it. */
+  hitSpheres(): { center: THREE.Vector3; radius: number }[] {
+    this.group.updateMatrixWorld(true)
+    return [
+      { center: this.head.getWorldPosition(new THREE.Vector3()), radius: 0.14 },
+      { center: this.body.localToWorld(new THREE.Vector3(0, -0.45, 0)), radius: 0.22 },
+      { center: this.body.localToWorld(new THREE.Vector3(0, -0.85, 0)), radius: 0.19 },
+    ]
+  }
+
   setInfo(entry: AvatarInfo): void {
     this.color.color.set(entry.color)
     const text = entry.connected ? entry.name : `${entry.name} (reconnecting)`
@@ -227,6 +237,11 @@ export class RemotePlayers {
   /** World positions of the heads of everyone shown here (same stage). */
   headPositions(): THREE.Vector3[] {
     return [...this.avatars.values()].filter((a) => a.group.visible).map((a) => a.head.getWorldPosition(new THREE.Vector3()))
+  }
+
+  /** Everyone shown here (same stage), by session id. */
+  visibleAvatars(): [string, Avatar][] {
+    return [...this.avatars.entries()].filter(([, a]) => a.group.visible)
   }
 
   isUnderwater(sessionId: string): boolean {

@@ -146,6 +146,10 @@ export class CrewRoom extends Room<{ state: CrewState }> {
     this.onMessage('fired', (client, msg: { id?: string }) => {
       if (typeof msg?.id === 'string') this.broadcast('fired', { id: msg.id, by: client.sessionId }, { except: client })
     })
+    // Which hand a sword was drawn with, so everyone shows it in the right one.
+    this.onMessage('swordHand', (client, msg: { id?: string; hand?: number }) => {
+      if (typeof msg?.id === 'string' && msg.id.startsWith('sword')) this.broadcast('swordHand', { id: msg.id.slice(0, 16), hand: msg.hand === 0 ? 0 : 1 }, { except: client })
+    })
 
     // Shared objects: first grab wins.
     this.onMessage('claim', (client, msg: { id?: string }) => {

@@ -9,6 +9,7 @@ import { ComfortVignette } from '../movement/ComfortVignette'
 import { Player } from '../movement/Player'
 import { FpsOverlay } from '../ui/FpsOverlay'
 import { Hud } from '../ui/Hud'
+import { GogglesDisplay } from '../ui/GogglesDisplay'
 import { WristComputer } from '../ui/WristComputer'
 import type { Settings } from './settings'
 import { Inventory } from '../systems/Inventory'
@@ -36,6 +37,7 @@ export class Game implements GameContext {
   readonly audio: AudioSystem
   readonly hud: Hud
   readonly wrist: WristComputer
+  readonly goggles: GogglesDisplay
   readonly desktop: DesktopControls
   readonly record: RunRecord = { whoShotFirst: null, clayHits: 0, clayShots: 0, bullseyeBeforeBattle: false }
   // Single player plays the Strongman until character selection arrives with the lobby.
@@ -59,7 +61,7 @@ export class Game implements GameContext {
   private readonly airSky = new THREE.Color(0xe9c79a)
   private underwaterLook: { fog: THREE.Scene['fog']; background: THREE.Scene['background'] } | null = null
   /** Your own diver body, under the camera. */
-  private readonly selfBody = new Avatar('#e8b930')
+  readonly selfBody = new Avatar('#e8b930')
   private readonly size = new THREE.Vector2()
   private pending: (() => Stage) | null = null
   private fadeDir = 0
@@ -95,6 +97,7 @@ export class Game implements GameContext {
     this.player = new Player(this.rig, this.camera, this.controllers.hands, this.vignette, settings.turn, settings.seated)
     this.fps = new FpsOverlay(this.renderer, this.controllers.leftGrip, settings.showFps)
     this.wrist = new WristComputer(this.controllers.leftGrip)
+    this.goggles = new GogglesDisplay(this.camera)
     this.audio = new AudioSystem(this.camera, this.scene, this.controllers.hands)
     this.audio.setAmbience(settings.ambience)
     this.hud = new Hud(this.scene, this.camera)
@@ -194,6 +197,9 @@ export class Game implements GameContext {
     this.guide.update(this.pending ? null : (this.stage?.guide?.() ?? null), this.camera, inXr, busy)
     this.audio.update(dt, this.player.lastResult.thrust)
     this.vignette.update(dt, this.player.speed, this.player.physics.yawRate)
+    // Mask on (from the deck onwards): the air gauge lives in the goggles, not on the wrist.
+    this.wrist.airInMask = this.vignette.maskOn
+    this.goggles.update(dt, this.vignette.maskOn, { air: this.player.air.fraction, depth: this.player.depth, refilling: this.player.refilling })
     this.fps.update(time)
     this.renderer.render(this.scene, this.camera)
   }

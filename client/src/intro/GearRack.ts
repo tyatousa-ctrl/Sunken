@@ -29,6 +29,11 @@ const MASK_FACE_DISTANCE = 0.22
 export class GearRack {
   readonly state: GearState = { tank: false, mask: false, fins: false, map: false }
   onChange: (piece: GearPiece) => void = () => {}
+  /** Someone reached for scuba gear before the ship came under fire. */
+  onLocked: (hand: Hand) => void = () => {}
+  /** Scuba gear stays chained to the rack until the other ship is fired on. */
+  private locked = true
+  private readonly chain = new THREE.Group()
   private readonly items = new Map<GearPiece, LooseItem>()
   private readonly head = new THREE.Vector3()
   private readonly hand = new THREE.Vector3()
@@ -67,6 +72,21 @@ export class GearRack {
     const fins = makeFins()
     fins.position.set(0.55, 0.62, 0.15)
     rack.add(tank, mask, fins)
+    // A chain across the rack with a padlock: nobody needs scuba gear on a nice day.
+    const iron = new THREE.MeshStandardMaterial({ color: 0x3d3f44, roughness: 0.5, metalness: 0.7 })
+    for (let i = 0; i < 17; i++) {
+      const link = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.009, 5, 10), iron)
+      link.position.set(-0.8 + i * 0.1, 1.08 - Math.sin((i / 16) * Math.PI) * 0.12, 0.3)
+      link.rotation.y = i % 2 ? Math.PI / 2 : 0
+      link.rotation.z = Math.PI / 2
+      this.chain.add(link)
+    }
+    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.09, 0.04), new THREE.MeshStandardMaterial({ color: 0xb08a3a, roughness: 0.4, metalness: 0.8 }))
+    lock.position.set(0, 0.88, 0.32)
+    const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.01, 6, 12, Math.PI), iron)
+    shackle.position.set(0, 0.925, 0.32)
+    this.chain.add(lock, shackle)
+    rack.add(this.chain)
 
     const table = makeTable()
     table.position.copy(TABLE_POSITION)
@@ -81,16 +101,23 @@ export class GearRack {
       grab.add(item)
       object.userData.piece = piece
     }
+    const refuse = (hand: Hand) => {
+      if (!this.locked) return false
+      this.onLocked(hand)
+      this.audio.play('click', undefined, 0.4)
+      return true
+    }
     add('tank', tank, new LooseItem(tank, {
       radius: 0.22,
       settle: 'home',
+      onGrab: (hand) => refuse(hand),
       onRelease: () => this.near(this.hand, TANK_CLIP_DISTANCE) && this.equip('tank'),
     }))
     add('mask', mask, new LooseItem(mask, {
       radius: 0.12,
       settle: 'home',
       // A desktop player can't lift a mask to their face, so it goes straight on.
-      onGrab: (hand) => (hand.virtual ? this.equip('mask') : false),
+      onGrab: (hand) => refuse(hand) || (hand.virtual ? this.equip('mask') : false),
       whileHeld: (hand) => {
         if (this.near(hand.worldPos(this.hand), MASK_FACE_DISTANCE)) {
           this.dropFromHand(hand)
@@ -98,8 +125,20 @@ export class GearRack {
         }
       },
     }))
-    add('fins', fins, new LooseItem(fins, { radius: 0.2, settle: 'home', onGrab: () => this.equip('fins') }))
+    add('fins', fins, new LooseItem(fins, { radius: 0.2, settle: 'home', onGrab: (hand) => refuse(hand) || this.equip('fins') }))
     add('map', map, new LooseItem(map, { radius: 0.25, settle: 'home', onGrab: () => this.equip('map') }))
+  }
+
+  get isLocked(): boolean {
+    return this.locked
+  }
+
+  /** The other ship's been fired on: the chain comes off. */
+  unlock(): void {
+    if (!this.locked) return
+    this.locked = false
+    this.chain.visible = false
+    this.audio.play('click')
   }
 
   get complete(): boolean {
@@ -108,6 +147,7 @@ export class GearRack {
 
   /** Put on anything still missing (washed overboard before finishing). */
   equipAll(): void {
+    this.unlock()
     for (const piece of ['tank', 'mask', 'fins', 'map'] as const) if (!this.state[piece]) this.equip(piece)
   }
 

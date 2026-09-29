@@ -12,7 +12,7 @@ Tracks milestones from `BRIEF.md`, decisions, and placeholders to replace later.
 | 4 | Level 1 + systems: backpack, map pieces, first riddle, Strongman skill, checkpoints | Built and tested end to end in an emulated Quest 3; waiting for real-headset test |
 | 5 | Multiplayer: Colyseus rooms, room codes, pose sync, shared objects, voice, reconnect | Built and tested with real clients (Node and two/three headless browsers); waiting for a multi-headset test |
 | 6 | Bots + all classes + magic: bot behaviour, all four skills, rune spells with gesture recognition | Built and tested (solo with 3 bots, crew with host-run bots); waiting for real-headset test |
-| 7 | Levels 2–5 + finale, polish | In progress: Level 2 built and tested end to end in an emulated Quest 3; Levels 3–5, finale and polish to come |
+| 7 | Levels 2–5 + finale, polish | In progress: Levels 2 and 3 built and tested end to end in an emulated Quest 3; Levels 4–5, finale and polish to come |
 
 ## Milestone 1: what's in it
 
@@ -194,12 +194,33 @@ Up to four divers per crew. Solo play still works with no server at all.
 - Seven starfish: four on the sand, two on rocks, and one on top of the high reef, a tall rock pillar in the west. Touch one (hand or face) and it curls and glows from then on, so you know you've counted it; the count itself stays in your head.
 - Round the high reef the water pours down: swimming up it, you're dragged back down (silt streaks show the current). The **Fish Whisperer** presses B beside the turtle to ride her: she carries you to the top and sets you down (the current doesn't reach the top). If nobody's the Fish Whisperer, the Fish Whisperer bot rides her up once you've been dragged down, and calls out the starfish it finds there.
 - The **door of stone** is set into the ridge, with a carved stone dial beside it (numbers 1–9). Grip the rim and turn it; it clicks past each number and settles on the one under the gold notch when you let go. Wrong numbers do nothing (the crew mutters); **7** grinds the door down into the sand.
-- Behind it, a sealed chamber holds **map piece III** on a plinth (with two coins and a gem). Taking it solves the riddle and opens the exit arch at the back of the chamber; swimming through ends the level with the summary. Level 3 isn't built yet, so the game says so and saves the checkpoint.
+- Behind it, a sealed chamber holds **map piece III** on a plinth (with two coins and a gem). Taking it solves the riddle and opens the exit arch at the back of the chamber; swimming through ends the level with the summary and leads on to Level 3.
 - Hints unlock while stuck (the third gives the answer), the compass points the way after two minutes, and the Navigator's trail and hidden ink work as in Level 1.
 
 **Collectibles:** 20 coins (18 in the meadow, 2 in the chamber), 3 gems (on the high reef, by an amphora in the east, and in the chamber), 2 tide runes. Bots don't go for things behind the closed door or up the high reef's current.
 
 **Checked:** a full walkthrough in the emulator (all seven starfish, the current, the turtle ride to the top, a wrong number, 7 opening the door, the map piece, the arch, the summary); nobody gets into the chamber over, round or behind it; Level 1's walkthrough still passes and leads into Level 2; the server tests cover per-level steps.
+
+## Milestone 7: Level 3, The Blue Grotto
+
+Riddle: *"When noon's light swims through the door, blue shows the way the old ones swore."* Start it from the start screen's "Start at" menu (`?stage=level3`), or swim out of Level 2.
+
+- You arrive in open water before a sea cliff. An **arch** at its foot leads into a short tunnel and up into the grotto: a big cave with an air pocket, its water glowing blue with the noon light that pours through the arch. Surface inside and the step "enter the grotto" is done. The cave walls keep you in (above and below the water).
+- **Climb out** onto the rock shelves: at the surface, grip a ledge (Space on desktop) and you're standing on it. Walk off the edge to drop back in and swim.
+- **Light the carving.** A shaft of blue light rises from the water. Three giant polished shells stand on the shelves (the east shelf, the smugglers' camp at the north end, the west ledge). Grip a shell's rim and swing your hand round to turn it; it grinds and clicks as it turns, and a turn ending close to the right angle settles exactly into place. The light bounces from shell to shell, and when the last one sends it onto the carved wall, the carving glows and a niche opens.
+- Take **map piece IV** from the niche. The last step: the old ones' way out, an underwater passage at the north end, is blocked by a boulder. The **Strongman** heaves it aside (B beside it); without one, the Strongman bot does it. Swim out through the passage to finish.
+- The smugglers' camp has a rowboat, crates, a lantern and coins; hints, compass and the Navigator work as in the earlier levels.
+
+**Checked:** a full walkthrough in the emulator (the arch, tunnel, surfacing, the walls holding, climbing out, turning all three shells, the carving, the map piece, stepping off, the heave, out through the passage, the summary). Still to tune: the rippling light on the cave walls is too strong and even (a toned-down version is ready).
+
+## Deck additions (sword fights, dive mask, gear lock)
+
+- **Cutlasses.** A rack of four swords stands against the port rail between the masts, with a sign. Grip a hilt to draw one (one in each hand works too); let go and it slides back into the rack. When two blades meet with some speed they ring out with a metallic clang and a shower of sparks, and every hand holding one of them gets a strong jolt. A swipe across somebody (a crewmate, a bot or one of the sailors) leaves a little spray of red blood that drips down onto the deck (the drops fade after about 20 s), a smear on the blade for a few seconds, and a buzz in the swinging hand; if it's you who's cut, both your hands buzz softly. A fast swing whooshes. In a crew, a sword someone holds rides in their hand on everyone's screen and can't be taken. Everyone's device works out clashes and cuts for itself from where the swords are. The swords go back to the rack when the attack starts.
+- **Mask display.** Once the mask is on (from the moment you put it on at the rack on deck), the air gauge and depth show in a small readout inside the mask, low in the left of your view, instead of on the wrist. The wrist computer keeps depth, speed, skill and score.
+- **Thinner mask rim.** The mask's dark rim is pushed out to the corners of your view and made lighter, so it frames the view without closing it in.
+- **Scuba gear locked.** The tank, mask and fins are chained to the rack (with a padlock) until someone fires on the other ship. Reaching for them before then gives a short buzz and "The scuba gear is chained up. No need for it on a fine day like this… yet." The chain comes off when the attack starts (for everyone in a crew). The treasure map on the table can be taken any time.
+
+**Checked:** in the emulator: the gear refuses a grab before the attack and comes off its rack after; two swords drawn, blades crossed and clashed (clang), a swipe across a sailor (blood, a bloody blade), both swords back in the rack; the mask display showing after putting the mask on. With two browsers: a sword drawn by one player rides in their hand on the other's screen and can't be grabbed there. Unit tests cover the blade contact maths.
 
 ## Playtest fixes (after Milestone 6)
 

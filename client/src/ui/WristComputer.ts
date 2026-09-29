@@ -21,6 +21,8 @@ export class WristComputer {
   private sinceDraw = 1
   private blink = 0
   private readonly face: THREE.Mesh
+  /** The mask's on and shows the air gauge in the goggles, so the wrist leaves it out. */
+  airInMask = false
 
   constructor(wrist: THREE.Object3D) {
     this.canvas.width = 320
@@ -68,18 +70,24 @@ export class WristComputer {
     ctx.lineWidth = 6
     ctx.strokeRect(3, 3, w - 6, h - 6)
 
-    const barColor = critical ? (Math.floor(this.blink * 3) % 2 ? '#ff4d4d' : '#5a1111') : low ? '#ffb347' : '#5fe0ff'
-    ctx.fillStyle = '#12303f'
-    ctx.fillRect(18, 18, w - 36, 42)
-    ctx.fillStyle = barColor
-    ctx.fillRect(18, 18, (w - 36) * status.air, 42)
-    // Outlined label so it reads on both the filled bar and the empty track.
-    ctx.font = 'bold 30px monospace'
-    ctx.lineWidth = 6
-    ctx.strokeStyle = '#04141d'
-    ctx.strokeText(`AIR ${pct}%${status.refilling ? ' +' : ''}`, 26, 50)
-    ctx.fillStyle = '#ffffff'
-    ctx.fillText(`AIR ${pct}%${status.refilling ? ' +' : ''}`, 26, 50)
+    if (this.airInMask) {
+      ctx.font = 'bold 24px monospace'
+      ctx.fillStyle = '#5b8fa3'
+      ctx.fillText('AIR: SEE MASK', 26, 48)
+    } else {
+      const barColor = critical ? (Math.floor(this.blink * 3) % 2 ? '#ff4d4d' : '#5a1111') : low ? '#ffb347' : '#5fe0ff'
+      ctx.fillStyle = '#12303f'
+      ctx.fillRect(18, 18, w - 36, 42)
+      ctx.fillStyle = barColor
+      ctx.fillRect(18, 18, (w - 36) * status.air, 42)
+      // Outlined label so it reads on both the filled bar and the empty track.
+      ctx.font = 'bold 30px monospace'
+      ctx.lineWidth = 6
+      ctx.strokeStyle = '#04141d'
+      ctx.strokeText(`AIR ${pct}%${status.refilling ? ' +' : ''}`, 26, 50)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillText(`AIR ${pct}%${status.refilling ? ' +' : ''}`, 26, 50)
+    }
     ctx.fillStyle = '#e8f7ff'
 
     ctx.font = 'bold 34px monospace'

@@ -44,7 +44,8 @@ export class ComfortVignette {
           // Dive mask: a soft dark rim at the edge of view, wider at the sides than top and bottom.
           vec3 d = normalize(vDir);
           float oval = length(vec2(d.x * 0.85, d.y * 1.25)) / max(-d.z, 0.05);
-          float mask = smoothstep(1.25, 1.7, oval) * 0.9 * uMask;
+          // Kept thin, out in the corners, so it frames the view without closing it in.
+          float mask = smoothstep(1.55, 1.95, oval) * 0.8 * uMask;
           float dark = max(max(edge, uFade), mask);
           // Drunk haze: amber, heavier at the edges, slowly breathing, with soft blotches swirling
           // round the edge of view (colour only: the view itself never moves).
@@ -70,6 +71,10 @@ export class ComfortVignette {
   /** Show the dive-mask rim (the mask is on). */
   setMask(on: boolean): void {
     this.uniforms.uMask.value = on ? 1 : 0
+  }
+
+  get maskOn(): boolean {
+    return this.uniforms.uMask.value > 0
   }
 
   setStrength(strength: VignetteStrength): void {
