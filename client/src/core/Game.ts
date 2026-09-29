@@ -50,6 +50,14 @@ export class Game implements GameContext {
   private readonly timer = new THREE.Timer()
   private readonly controllers: Controllers
   private readonly guide: ControllerGuide
+  /** Seen from above when a diver's head is out of the water. */
+  private readonly topWater = new THREE.Mesh(
+    new THREE.PlaneGeometry(900, 900).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x2f7fa3, roughness: 0.25, metalness: 0.1 }),
+  )
+  private readonly airFog = new THREE.Fog(0xf1c28e, 60, 700)
+  private readonly airSky = new THREE.Color(0xe9c79a)
+  private underwaterLook: { fog: THREE.Scene['fog']; background: THREE.Scene['background'] } | null = null
   /** Your own diver body, under the camera. */
   private readonly selfBody = new Avatar('#e8b930')
   private readonly size = new THREE.Vector2()
@@ -92,6 +100,9 @@ export class Game implements GameContext {
     this.hud = new Hud(this.scene, this.camera)
     this.guide = new ControllerGuide(this.controllers.leftGrip, this.controllers.rightGrip)
     this.selfBody.makeSelf()
+    this.topWater.visible = false
+    this.scene.add(this.topWater)
+    this.player.onBreath = () => this.hud.now('Ahh, fresh air! Your tank is full.', 2.5)
     this.scene.add(this.selfBody.group)
     this.bots = new BotCrew(this)
     this.botCommands = new BotCommands(this, this.bots)
@@ -176,6 +187,7 @@ export class Game implements GameContext {
     this.updateTransition(dt)
     this.controllers.setGlove(this.player.env?.kind === 'swim' ? 'neoprene' : 'skin')
     this.updateSelfBody()
+    this.updateSurfacing()
     this.hud.update(dt, inXr)
     this.guide.enabled = this.settings.buttonHints
     const busy: [boolean, boolean] = [!!this.controllers.left?.held, !!this.controllers.right?.held]
@@ -202,6 +214,26 @@ export class Game implements GameContext {
   }
 
   /** Head and both hands, world space: [head pos, head quat, left pos, left quat, right pos, right quat]. */
+  /** A diver's head out of the water sees sky and open sea (and hears waves), not the deep. */
+  private updateSurfacing(): void {
+    const env = this.player.env
+    const above = env?.kind === 'swim' && this.pending === null && this.camera.getWorldPosition(this.pv).y > env.surfaceY + 0.02
+    if (above && !this.underwaterLook) {
+      this.underwaterLook = { fog: this.scene.fog, background: this.scene.background }
+      this.scene.fog = this.airFog
+      this.scene.background = this.airSky
+      this.topWater.position.y = env.surfaceY
+      this.topWater.visible = true
+      this.audio.setEnvironment('air')
+    } else if (!above && this.underwaterLook) {
+      this.scene.fog = this.underwaterLook.fog
+      this.scene.background = this.underwaterLook.background
+      this.underwaterLook = null
+      this.topWater.visible = false
+      if (env?.kind === 'swim') this.audio.setEnvironment('water')
+    }
+  }
+
   private updateSelfBody(): void {
     const body = this.selfBody
     body.group.visible = this.stage !== null && this.player.env !== null

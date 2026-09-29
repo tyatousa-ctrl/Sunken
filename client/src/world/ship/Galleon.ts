@@ -237,8 +237,32 @@ function makeHullGeometry(): THREE.BufferGeometry {
     pos.setZ(i, pos.getZ(i) * (1 - 0.1 * depth))
   }
   geometry.translate(0, DECK_Y + 0.3, 0)
-  geometry.computeVertexNormals()
-  return geometry
+  // Drop the flat top cap: it would sit 30 cm above the deck like a false floor, hiding the planks
+  // (and anything lying on them). The sides stay, rising above the deck as a low bulwark.
+  const open = withoutTopCap(geometry, DECK_Y + 0.3)
+  open.computeVertexNormals()
+  return open
+}
+
+/** A copy of a (non-indexed) geometry without the triangles lying flat at height `y`. */
+function withoutTopCap(geometry: THREE.BufferGeometry, y: number): THREE.BufferGeometry {
+  const src = geometry.index ? geometry.toNonIndexed() : geometry
+  const pos = src.attributes.position as THREE.BufferAttribute
+  const uv = src.attributes.uv as THREE.BufferAttribute | undefined
+  const keptPos: number[] = []
+  const keptUv: number[] = []
+  for (let t = 0; t < pos.count; t += 3) {
+    const flatTop = [0, 1, 2].every((k) => Math.abs(pos.getY(t + k) - y) < 1e-4)
+    if (flatTop) continue
+    for (let k = 0; k < 3; k++) {
+      keptPos.push(pos.getX(t + k), pos.getY(t + k), pos.getZ(t + k))
+      if (uv) keptUv.push(uv.getX(t + k), uv.getY(t + k))
+    }
+  }
+  const out = new THREE.BufferGeometry()
+  out.setAttribute('position', new THREE.Float32BufferAttribute(keptPos, 3))
+  if (uv) out.setAttribute('uv', new THREE.Float32BufferAttribute(keptUv, 2))
+  return out
 }
 
 function makeWaleGeometry(): THREE.BufferGeometry {

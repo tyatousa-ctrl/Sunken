@@ -31,6 +31,11 @@ export class Player {
   air = new AirTank()
   readonly checkpoint = new THREE.Vector3(0, 0.6, 4)
   refilling = false
+  /** Seconds the head has been out of the water (at the surface). */
+  surfacedFor = 0
+  /** Called when a breath at the surface has refilled the tank. */
+  onBreath: () => void = () => {}
+  private breathed = false
   /** Set when a walking player drops into the water; the stage decides what happens. */
   inWater = false
   /** On the rigging (gripping the net, or hanging on it): no gravity, no walking. */
@@ -415,6 +420,20 @@ export class Player {
 
   private updateAir(dt: number, env: SwimEnvironment, thrust: number[]): void {
     const head = this.camera.getWorldPosition(this.head)
+    // Head out of the water: breathe. A second of fresh air fills the tank.
+    if (head.y > env.surfaceY + 0.02) {
+      this.surfacedFor += dt
+      if (this.surfacedFor >= 1 && !this.breathed) {
+        this.breathed = true
+        this.air.fill()
+        for (const hand of this.hands) hand.pulse(0.3, 60)
+        this.onBreath()
+      }
+      this.refilling = true
+      return
+    }
+    this.surfacedFor = 0
+    this.breathed = false
     this.refilling = env.refillZones.some((z) => (z.sphere ? z.center.distanceTo(head) : Math.hypot(head.x - z.center.x, head.z - z.center.z)) < z.radius)
     if (this.refilling) this.air.refill(dt)
     else this.air.drain(dt, thrust)

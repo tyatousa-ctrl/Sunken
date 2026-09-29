@@ -4,6 +4,8 @@ import type { BoxCollider, SwimEnvironment } from './environment'
 export const HEAD_CLEARANCE = 0.35
 /** Eyes stay this high over the seabed: a diver lying flat, with a body and tank under the head. */
 export const FLOOR_CLEARANCE = 0.5
+/** How far a diver's head can come up out of the water at the surface (to breathe and look around). */
+export const SURFACE_POKE = 0.25
 
 const v = new THREE.Vector3()
 const local = new THREE.Vector3()
@@ -18,7 +20,7 @@ export function swimPush(head: THREE.Vector3, env: SwimEnvironment, push: THREE.
   push.set(0, 0, 0)
   const floor = env.floorHeight(head.x, head.z) + FLOOR_CLEARANCE
   if (head.y < floor) push.y += floor - head.y
-  const ceiling = env.surfaceY - HEAD_CLEARANCE
+  const ceiling = env.surfaceY + SURFACE_POKE
   if (head.y > ceiling) push.y += ceiling - head.y
 
   for (const rock of env.rocks) {
