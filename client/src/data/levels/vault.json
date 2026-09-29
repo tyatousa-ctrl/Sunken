@@ -1,0 +1,33 @@
+{
+  "id": "vault",
+  "name": "The Treasure Vault",
+  "riddle": "Wake not the keeper, feed it instead; give it the pearl from the oyster bed.",
+  "steps": [
+    {
+      "id": "takePearl",
+      "objective": "Find the pearl from the oyster bed."
+    },
+    {
+      "id": "feedKeeper",
+      "objective": "Feed the keeper."
+    },
+    {
+      "id": "openChest",
+      "objective": "Open the great chest, together."
+    }
+  ],
+  "hints": [
+    "The keeper sleeps before the great chest. Waking it would be a mistake; a gift might not.",
+    "Oysters grow where fresh water falls. Grip one and it opens.",
+    "Hold what you found to the keeper's mouth. Then all hands on the lid at once!"
+  ],
+  "reward": {
+    "mapPiece": 5,
+    "nextRiddle": "The treasure is found. Fair winds, crew!",
+    "message": "The treasure is yours!"
+  },
+  "collectibles": {
+    "coins": 20,
+    "gems": 3
+  }
+}

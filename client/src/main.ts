@@ -9,6 +9,8 @@ import { IntroStage } from './stages/IntroStage'
 import { Level1Stage } from './stages/Level1Stage'
 import { Level2Stage } from './stages/Level2Stage'
 import { Level3Stage } from './stages/Level3Stage'
+import { Level4Stage } from './stages/Level4Stage'
+import { VaultStage } from './stages/VaultStage'
 import { NetClient, type JoinMode } from './net/NetClient'
 import { ATTACK_SECONDS } from './intro/attackTimeline'
 
@@ -19,7 +21,7 @@ const params = new URLSearchParams(location.search)
 const startAt = params.get('stage') ?? 'intro'
 /** A fresh stage by its id ('intro' for the deck). */
 function makeStage(id: string) {
-  return id === 'sandbox' ? new DiveStage(game) : id === 'level1' ? new Level1Stage(game, false) : id === 'level2' ? new Level2Stage(game) : id === 'level3' ? new Level3Stage(game) : new IntroStage(game)
+  return id === 'sandbox' ? new DiveStage(game) : id === 'level1' ? new Level1Stage(game, false) : id === 'level2' ? new Level2Stage(game) : id === 'level3' ? new Level3Stage(game) : id === 'level4' ? new Level4Stage(game) : id === 'vault' ? new VaultStage(game) : new IntroStage(game)
 }
 game.start(makeStage(startAt))
 // Testing: jump to any level from inside the game (both thumbsticks, or L on desktop).
@@ -28,11 +30,13 @@ game.levelHop.setTargets([
   { label: 'Level 1', make: () => makeStage('level1') },
   { label: 'Level 2', make: () => makeStage('level2') },
   { label: 'Level 3', make: () => makeStage('level3') },
+  { label: 'Level 4', make: () => makeStage('level4') },
+  { label: 'Vault', make: () => makeStage('vault') },
   { label: 'Sandbox', make: () => makeStage('sandbox') },
 ])
 
 const startSelect = document.getElementById('opt-start') as HTMLSelectElement
-startSelect.value = ['intro', 'level1', 'level2', 'level3', 'sandbox'].includes(startAt) ? startAt : 'intro'
+startSelect.value = ['intro', 'level1', 'level2', 'level3', 'level4', 'vault', 'sandbox'].includes(startAt) ? startAt : 'intro'
 startSelect.addEventListener('change', () => {
   const next = new URLSearchParams(location.search)
   next.set('stage', startSelect.value)

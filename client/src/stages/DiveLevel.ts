@@ -78,6 +78,8 @@ export abstract class DiveLevel implements Stage {
   protected catchingUp = false
   protected time = 0
   protected complete = false
+  /** The last level: no arch and no next riddle once it's solved. */
+  protected readonly finale: boolean = false
   protected readonly taught = new Set<string>()
   protected readonly v = new THREE.Vector3()
   protected readonly head = new THREE.Vector3()
@@ -355,7 +357,7 @@ export abstract class DiveLevel implements Stage {
     if (event) this.onProgress([event])
     this.map.setCompass(this.progress.compassVisible, this.objective())
     const head = this.game.camera.getWorldPosition(this.head)
-    if (this.progress.solved && !this.complete && this.gate.passedThrough(head)) this.finishLevel()
+    if (this.progress.solved && !this.complete && !this.finale && this.gate.passedThrough(head)) this.finishLevel()
   }
 
   /**
@@ -403,7 +405,7 @@ export abstract class DiveLevel implements Stage {
         game.party.checkpoint = `${this.level.id}-solved`
         game.player.checkpoint.copy(this.gate.group.localToWorld(new THREE.Vector3(0, 2, 3)))
         game.hud.now(this.level.reward.message, 5)
-        game.hud.say('A new riddle is written on your map. Swim through the stone arch to go on.', 6)
+        if (!this.finale) game.hud.say('A new riddle is written on your map. Swim through the stone arch to go on.', 6)
       }
     }
   }

@@ -12,7 +12,8 @@ import { TooHeavy } from '../level1/CaptainsCabin'
 import { SeabedScene, SURFACE_Y, sandHeight } from '../world/SeabedScene'
 import { applyCaustics } from '../world/caustics'
 import { Reef, makeAmphora, type Boulder } from '../level2/Reef'
-import { CAVE, CLIFF_Z, NORTH_TUNNEL, SHELVES, buildGrotto, caveFloor, constrainWalker, containInGrotto, grottoFloor, inCave, shelfAt, shelfColliders, type Shelf } from '../level3/Grotto'
+import { CAVE, CLIFF_Z, NORTH_TUNNEL, SHELVES, SIDE_CHAMBER, SIDE_TUNNEL, buildGrotto, caveFloor, constrainWalker, containInGrotto, grottoFloor, inCave, inSidePassage, shelfAt, shelfColliders, type Shelf } from '../level3/Grotto'
+import { Level4Stage } from './Level4Stage'
 import { LightShells } from '../level3/LightShells'
 import { DiveLevel, type DiveLevelSetup } from './DiveLevel'
 
@@ -39,10 +40,12 @@ const CLIMB_REACH = 0.55
 
 const COINS_SEA: [number, number][] = [[4, 32], [-5, 26], [9, 22], [-12, 18], [14, 30], [-3, 16]]
 const COINS_TUNNEL: [number, number, number][] = [[0.6, 5.3, 8], [-0.5, 5.3, 3]]
-const COINS_POOL: [number, number][] = [[-2, -10], [3, -20], [-4, -26], [0, -16], [5, -8]]
+const COINS_POOL: [number, number][] = [[-2, -10], [0, -16]]
+/** Down the dark side tunnel: coins along the way and in the chamber at its end. */
+const COINS_SIDE: [number, number, number][] = [[16, SIDE_TUNNEL.y0 + 0.3, SIDE_TUNNEL.zc], [25, SIDE_CHAMBER.y0 + 0.3, -19.5], [27.5, SIDE_CHAMBER.y0 + 0.3, -16]]
 const COINS_SHELVES: [number, number][] = [[9, -6], [7, -22], [-8, -13], [-9, -25], [3, -30]]
 const COINS_CAMP: [number, number, number][] = [[-4.1, 0.8, -35.2], [5.2, 0.95, -36.4]]
-type Look = 'sea' | 'air' | 'grottoWater' | 'grottoAir'
+type Look = 'sea' | 'air' | 'grottoWater' | 'grottoAir' | 'dark'
 
 // Level 3, The Blue Grotto. Swim through a narrow arch in the sea cliff and a short dark tunnel, and
 // surface inside a great cave whose water glows blue with the noon light pouring through the arch.
@@ -69,6 +72,7 @@ export class Level3Stage extends DiveLevel {
     air: { fog: new THREE.Fog(0xf1c28e, 60, 700), background: new THREE.Color(0xe9c79a) },
     grottoWater: { fog: new THREE.FogExp2(0x1d78d0, 0.045), background: new THREE.Color(0x1d78d0) },
     grottoAir: { fog: new THREE.FogExp2(0x0a2447, 0.028), background: new THREE.Color(0x051226) },
+    dark: { fog: new THREE.FogExp2(0x010407, 0.3), background: new THREE.Color(0x010407) },
   }
 
   constructor(game: GameContext) {
@@ -198,6 +202,13 @@ export class Level3Stage extends DiveLevel {
     this.root.add(this.rowboat)
     this.rocks.push({ center: new THREE.Vector3(4.5, SURFACE_Y - 0.1, -24.5), radius: 0.7 })
 
+    // At the end of the dark side tunnel: a smugglers' strongbox, long since flooded.
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.6), dark)
+    box.position.set(28, SIDE_CHAMBER.y0 + 0.3, -18)
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.1, 0.62), new THREE.MeshStandardMaterial({ color: 0x8a6a2e, roughness: 0.5, metalness: 0.6 }))
+    lid.position.set(28, SIDE_CHAMBER.y0 + 0.65, -18)
+    this.root.add(box, lid)
+
     // The carved wall: spirals, a sun over waves, and an arrow down into the water. Faint until lit.
     this.carving = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.8), new THREE.MeshStandardMaterial({ map: makeCarvingTexture(), roughness: 1, emissive: 0x000000 }))
     this.carving.position.copy(CARVING)
@@ -249,7 +260,7 @@ export class Level3Stage extends DiveLevel {
   private updateLook(head: THREE.Vector3): void {
     const inGrotto = head.z < CLIFF_Z
     const above = head.y > SURFACE_Y + 0.02
-    const look: Look = inGrotto ? (above ? 'grottoAir' : 'grottoWater') : above ? 'air' : 'sea'
+    const look: Look = inSidePassage(head) ? 'dark' : inGrotto ? (above ? 'grottoAir' : 'grottoWater') : above ? 'air' : 'sea'
     if (look === this.look) return
     this.look = look
     const { scene, audio } = this.game
@@ -259,7 +270,7 @@ export class Level3Stage extends DiveLevel {
   }
 
   protected nextStage(): (() => Stage) | null {
-    return null
+    return () => new Level4Stage(this.game)
   }
 
   protected onProp(key: string, v: number[]): void {
@@ -268,7 +279,7 @@ export class Level3Stage extends DiveLevel {
   }
 
   protected levelInk(): string[] {
-    return ['Hidden ink: a gem behind the smugglers\' crates, one in a dark nook deep in the grotto\'s pool, and one at the cliff\'s foot east of the arch.']
+    return ['Hidden ink: a gem behind the smugglers\' crates, one at the end of the dark tunnel off the east of the pool, and one at the cliff\'s foot east of the arch.']
   }
 
   // ---- Puzzle -----------------------------------------------------------------------------------
@@ -309,7 +320,8 @@ export class Level3Stage extends DiveLevel {
     for (const [x, z] of COINS_SHELVES) this.place(this.root, 'coin', x, (shelfAt(x, z)?.y ?? SURFACE_Y) + 0.12, z)
     for (const [x, y, z] of COINS_CAMP) this.place(this.root, 'coin', x, SHELVES[1].y + y, z)
     this.place(this.root, 'gem', -4.8, SHELVES[1].y + 0.12, -38.3) // behind the crates
-    this.place(this.root, 'gem', -6.6, (caveFloor(-6.6, -21) ?? 3) + 0.25, -21) // the dark nook in the pool
+    for (const [x, y, z] of COINS_SIDE) this.place(this.root, 'coin', x, y, z)
+    this.place(this.root, 'gem', 28, SIDE_CHAMBER.y0 + 0.75, -18) // on the old chest at the end of the dark tunnel
     this.place(this.root, 'gem', 7, sandHeight(7, CLIFF_Z + 2) + 0.15, CLIFF_Z + 2) // the cliff's foot
     this.place(this.root, 'rune', 10, SHELVES[0].y + 0.15, -18)
     this.placeOnSand('rune', -14, 24)
@@ -324,6 +336,8 @@ export class Level3Stage extends DiveLevel {
       game.hud.now('The Blue Grotto! The water glows as if lit from below.', 5)
       this.teach('climb', game.inXr ? 'Grip the edge of a rock shelf at the surface to climb out.' : 'At the surface beside a rock shelf, press Space to climb out.', 6)
     }
+
+    if (inSidePassage(head)) this.teach('dark', 'Pitch dark in here... A Light Orb would help: press Y, then draw a circle.', 6)
 
     if (player.env?.kind === 'swim') this.tryClimbOut(head)
     else if (player.inWater) {

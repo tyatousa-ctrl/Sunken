@@ -1,0 +1,33 @@
+{
+  "id": "level4",
+  "name": "The Wreck Graveyard",
+  "riddle": "Three ships lie still; the one with no name holds the flame.",
+  "steps": [
+    {
+      "id": "findNameless",
+      "objective": "Read the names on the wrecks' sterns."
+    },
+    {
+      "id": "lightLantern",
+      "objective": "The one with no name holds the flame."
+    },
+    {
+      "id": "takeMapPiece",
+      "objective": "Take what the flame shows you."
+    }
+  ],
+  "hints": [
+    "Every ship carries her name on her stern. Swim round and read them all.",
+    "One stern has had its name scratched away. Look above it: what hangs there?",
+    "An old lantern can still burn: grip it and pull the trigger to strike its flint, or bring a Light Orb close."
+  ],
+  "reward": {
+    "mapPiece": 5,
+    "nextRiddle": "Wake not the keeper, feed it instead; give it the pearl from the oyster bed.",
+    "message": "Map piece V! The map is whole. The trench runs on, down into the dark... and up toward a golden light."
+  },
+  "collectibles": {
+    "coins": 20,
+    "gems": 3
+  }
+}

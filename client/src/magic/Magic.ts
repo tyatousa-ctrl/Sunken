@@ -262,6 +262,13 @@ export class Magic {
     }
   }
 
+  /** Is one of the Light Orbs (yours or a crewmate's) within `radius` of a point (world)? */
+  orbWithin(point: THREE.Vector3, radius: number): boolean {
+    return this.orbs.some((o) => o.group.getWorldPosition(this.orbPos).distanceTo(point) < radius)
+  }
+
+  private readonly orbPos = new THREE.Vector3()
+
   private removeOrb(orb: Orb): void {
     orb.group.removeFromParent()
     orb.light.dispose()

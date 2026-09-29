@@ -12,7 +12,7 @@ Tracks milestones from `BRIEF.md`, decisions, and placeholders to replace later.
 | 4 | Level 1 + systems: backpack, map pieces, first riddle, Strongman skill, checkpoints | Built and tested end to end in an emulated Quest 3; waiting for real-headset test |
 | 5 | Multiplayer: Colyseus rooms, room codes, pose sync, shared objects, voice, reconnect | Built and tested with real clients (Node and two/three headless browsers); waiting for a multi-headset test |
 | 6 | Bots + all classes + magic: bot behaviour, all four skills, rune spells with gesture recognition | Built and tested (solo with 3 bots, crew with host-run bots); waiting for real-headset test |
-| 7 | Levels 2–5 + finale, polish | In progress: Levels 2 and 3 built and tested end to end in an emulated Quest 3; Levels 4–5, finale and polish to come |
+| 7 | Levels 2–5 + finale, polish | In progress: Levels 2, 3 and 4 and the finale (the Treasure Vault) built and tested end to end in an emulated Quest 3; Level 5 (the Sunken Temple) skipped for now at your request (Level 4 opens straight into the vault); polish to come |
 
 ## Milestone 1: what's in it
 
@@ -212,6 +212,37 @@ Riddle: *"When noon's light swims through the door, blue shows the way the old o
 - The smugglers' camp has a rowboat, crates, a lantern and coins; hints, compass and the Navigator work as in the earlier levels.
 
 **Checked:** a full walkthrough in the emulator (the arch, tunnel, surfacing, the walls holding, climbing out, turning all three shells, the carving, the map piece, stepping off, the heave, out through the passage, the summary). Still to tune: the rippling light on the cave walls is too strong and even (a toned-down version is ready).
+
+## Level 3, finished
+
+- **Stalactites** hang from the grotto's roof (well above anyone standing on a shelf), the same blue-lit rock as the roof.
+- **A dark side tunnel** runs east from the pool, underwater, to a small flooded chamber: pitch dark apart from glowing specks on the walls (the water turns black inside; a Light Orb helps, and you're told so). Three coins lie along it and in the chamber, and the secret gem sits on an old smugglers' strongbox at the end.
+- Swimming out through the north passage now leads on to **Level 4**.
+
+## Milestone 7: Level 4, The Wreck Graveyard
+
+Riddle: *"Three ships lie still; the one with no name holds the flame."* (`?stage=level4`, the "Start at" menu, or the level-hop panel.)
+
+- Deep, dark water (murky blue-black, dim light, sand barely lit) where **three wrecks** lie half sunk in the sand, masts broken, their cabins open to explore. Each has her name painted across her stern: **SANTA ROSALIA**, **LA FORTUNA**, and a third whose name has been **scratched away** (a faint ghost of gilt under deep gouges). Swimming up to that stern is the first step.
+- Each wreck has an old **lantern** hanging from an iron arm at her stern. Grip it and pull the trigger to strike its flint (or bring a Light Orb close). The named ships' lanterns flicker and sputter out ("the wick is rotten through"); the nameless ship's burns warm and steady, and a shaft of its light falls down into the **trench** beside her, onto **map piece V**, which shows only then.
+- **Moray eels** live in holes in the wrecks' hulls and among the rocks, swaying with their jaws working. Swim within about 2 m and one lunges at you: a jolt in both hands and a shove back. The **Fish Whisperer's B** calms the eels nearby for 30 s.
+- Taking map piece V completes the map; the stone arch at the trench's east end opens on the way to the vault.
+- 20 coins (on the sand, on the wrecks' decks, in the trench), 3 gems (in two cabins and at the trench's dark west end), 2 runes. Hints nudge without giving the answer.
+
+**Checked:** in the emulator: the nameless stern, a named lantern sputtering out, the nameless lantern lighting and revealing the piece, taking it, the arch opening, and an eel's lunge.
+
+## Finale: The Treasure Vault
+
+Riddle: *"Wake not the keeper, feed it instead; give it the pearl from the oyster bed."* (`?stage=vault`.)
+
+- Up the trench, you surface in the lagoon of a **vast cavern of gold**: a floor of coins heaped into hills you can walk over, thousands of loose coins and coloured gem crystals glittering in it, open chests spilling gold and jewels half buried in the heaps, twelve marble columns with gilded capitals round the walls (torches flickering on four), golden amphorae, goblets and jewelled crowns on pedestals by a marble dais, shafts of daylight slanting down from cracks in the dome, sparkles drifting up off the gold, and a **waterfall** pouring off a high rock ledge into the lagoon's north end (streaming water, foam, mist and its roar). The air is warm and golden; the lagoon is clear turquoise.
+- Grip the lagoon's edge to climb out onto the gold; step back in to swim.
+- **The keeper**, an ancient sea serpent (teal and bronze, horned, crested), sleeps coiled on the gold before the great chest, its tail trailing into the lagoon. Come within 3 m without a gift and it stirs, an eye cracking open, and shoves you back ("Wake not the keeper").
+- **The pearl**: oysters lie on the lagoon floor under the waterfall; grip one to open it. One holds a glowing pearl. Carry it to the keeper's mouth: its eyes open, golden and calm, it takes the pearl and slides away down its coils into the lagoon.
+- **The great chest** on the dais opens only with **everyone's hands on its lid at once** (everyone in the vault; just you solo). It swings open in a blaze of golden light and sparks, and a **victory board** rises over it: team score, coins and gems, map pieces, time in the vault, *Who shot first?* and the clay-shooting tally.
+- 20 coins and 3 gems about the cavern (they can be pulled from a distance).
+
+**Checked:** in the emulator: surfacing, climbing out, the keeper stirring, opening the oysters and taking the pearl, feeding the keeper, the lid with a hand on it, and the victory board.
 
 ## Deck additions (sword fights, dive mask, gear lock)
 

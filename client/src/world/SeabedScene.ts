@@ -45,6 +45,9 @@ export interface SeabedOptions {
   godRays?: boolean
   /** Size of the water surface (0: the level makes its own). */
   surfaceSize?: number
+  /** Sand colour and how strongly the sunlight ripples over it (dark, deep water: less). */
+  sandColor?: number
+  sandCaustics?: number
 }
 
 /** Sand height at a world position: flat where the player starts, gentle dunes further out. */
@@ -84,7 +87,7 @@ export class SeabedScene {
     sun.position.set(3, 10, 2)
     root.add(sun)
 
-    root.add(makeSand(this.height, options.sandSize ?? 80))
+    root.add(makeSand(this.height, options.sandSize ?? 80, options.sandColor ?? 0xcfbf95, options.sandCaustics ?? 0.6))
     root.add(this.makeRocks())
     if (vent) root.add(makeVent(vent, this.height))
     root.add(this.makeSeagrass())
@@ -216,15 +219,15 @@ function rng(seed: number): () => number {
   }
 }
 
-function makeSand(height: (x: number, z: number) => number, size: number): THREE.Mesh {
+function makeSand(height: (x: number, z: number) => number, size: number, color: number, caustics: number): THREE.Mesh {
   const segments = Math.round(size)
   const geometry = new THREE.PlaneGeometry(size, size, segments, segments)
   geometry.rotateX(-Math.PI / 2)
   const pos = geometry.attributes.position as THREE.BufferAttribute
   for (let i = 0; i < pos.count; i++) pos.setY(i, height(pos.getX(i), pos.getZ(i)))
   geometry.computeVertexNormals()
-  const material = new THREE.MeshStandardMaterial({ color: 0xcfbf95, roughness: 1 })
-  applyCaustics(material, 0.6)
+  const material = new THREE.MeshStandardMaterial({ color, roughness: 1 })
+  applyCaustics(material, caustics)
   return new THREE.Mesh(geometry, material)
 }
 
