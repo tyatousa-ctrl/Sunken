@@ -6,10 +6,12 @@ export interface Settings {
   showFps: boolean
   vignette: VignetteStrength
   turn: TurnMode
+  /** Raises the view for players sitting down. */
+  seated: boolean
 }
 
 const KEY = 'sunken-sicily.settings'
-const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap' }
+const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap', seated: false }
 
 export function loadSettings(): Settings {
   try {

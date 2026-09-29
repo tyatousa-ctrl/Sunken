@@ -8,7 +8,7 @@ Generated from `client/src/assets/manifest.json`. Shown in-game on the Credits s
 |---|---|---|---|
 | Quest controller models (Touch Plus, Touch Plus v2, Touch Pro, Touch v3) and generic hand model | Amazon and the WebXR Input Profiles contributors | MIT | [webxr-input-profiles](https://github.com/immersive-web/webxr-input-profiles), bundled in `client/public/xr-profiles` |
 
-Everything else in the scene is built in code.
+Everything else in the scene (ships, crew, coast, props, sound effects) is built or synthesized in code.
 
 ## Libraries and runtime resources
 

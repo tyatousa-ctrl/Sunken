@@ -39,26 +39,27 @@ export class SeabedScene {
 
   constructor(
     scene: THREE.Scene,
+    root: THREE.Group,
     private readonly bubbles: Bubbles,
   ) {
     scene.background = WATER_COLOR
     // ~30 m visibility, per the brief's underwater draw-distance budget.
     scene.fog = new THREE.FogExp2(WATER_COLOR, 0.06)
 
-    scene.add(new THREE.HemisphereLight(0x9fdcff, 0x1b2a2f, 1.4))
+    root.add(new THREE.HemisphereLight(0x9fdcff, 0x1b2a2f, 1.4))
     const sun = new THREE.DirectionalLight(0xdff6ff, 1.6)
     sun.position.set(3, 10, 2)
-    scene.add(sun)
+    root.add(sun)
 
-    scene.add(makeSand())
-    scene.add(this.makeRocks())
-    scene.add(makeVent())
-    scene.add(this.makeSeagrass())
-    scene.add(makeWaterSurface(SURFACE_Y))
-    scene.add(makeGodRays(SURFACE_Y, this.godRayTime))
+    root.add(makeSand())
+    root.add(this.makeRocks())
+    root.add(makeVent())
+    root.add(this.makeSeagrass())
+    root.add(makeWaterSurface(SURFACE_Y))
+    root.add(makeGodRays(SURFACE_Y, this.godRayTime))
 
     this.particles = makeParticles()
-    scene.add(this.particles)
+    root.add(this.particles)
   }
 
   update(dt: number, elapsed: number): void {

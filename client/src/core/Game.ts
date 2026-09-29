@@ -1,46 +1,54 @@
 import * as THREE from 'three'
 import { VRButton } from 'three/addons/webxr/VRButton.js'
-import { UnderwaterAudio } from '../audio/UnderwaterAudio'
+import { AudioSystem } from '../audio/AudioSystem'
 import { Controllers } from '../input/Controllers'
 import { DesktopControls } from '../input/DesktopControls'
-import { GrabSystem } from '../interaction/GrabSystem'
+import type { Hand } from '../input/Hand'
 import { ComfortVignette } from '../movement/ComfortVignette'
 import { Player } from '../movement/Player'
 import { FpsOverlay } from '../ui/FpsOverlay'
+import { Hud } from '../ui/Hud'
 import { WristComputer } from '../ui/WristComputer'
-import { Bubbles } from '../world/Bubbles'
-import { addSandboxProps } from '../world/SandboxProps'
-import { SeabedScene, SURFACE_Y } from '../world/SeabedScene'
 import type { Settings } from './settings'
+import type { GameContext, RunRecord, Stage } from './Stage'
 
-// Owns the renderer, XR session, player rig and the single animation loop.
-export class Game {
+const FADE_SECONDS = 0.6
+
+// Owns the renderer, XR session, player rig, shared services and the single animation loop,
+// and runs whichever Stage is active (swapping stages behind a fade).
+export class Game implements GameContext {
   readonly renderer: THREE.WebGLRenderer
   readonly scene = new THREE.Scene()
-  readonly camera = new THREE.PerspectiveCamera(70, 1, 0.05, 500)
+  readonly camera = new THREE.PerspectiveCamera(70, 1, 0.05, 5000)
   // Everything that moves with the player (camera + controllers) hangs off the rig.
   readonly rig = new THREE.Group()
   readonly fps: FpsOverlay
   readonly vignette: ComfortVignette
   readonly player: Player
+  readonly audio: AudioSystem
+  readonly hud: Hud
+  readonly wrist: WristComputer
+  readonly desktop: DesktopControls
+  readonly record: RunRecord = { whoShotFirst: null, clayHits: 0, clayShots: 0 }
+  stage: Stage | null = null
 
   private readonly timer = new THREE.Timer()
   private readonly controllers: Controllers
-  private readonly desktop: DesktopControls
-  private readonly bubbles = new Bubbles(SURFACE_Y)
-  private readonly world: SeabedScene
-  private readonly grab: GrabSystem
-  private readonly wrist: WristComputer
-  private readonly audio: UnderwaterAudio
+  private readonly size = new THREE.Vector2()
+  private pending: (() => Stage) | null = null
+  private fadeDir = 0
 
-  constructor(container: HTMLElement, settings: Settings) {
+  constructor(
+    container: HTMLElement,
+    readonly settings: Settings,
+  ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.xr.enabled = true
     this.renderer.xr.setReferenceSpaceType('local-floor')
-    // Fixed foveated rendering: full strength is cheap on Quest and hard to notice underwater.
+    // Fixed foveated rendering: full strength is cheap on Quest and hard to notice in fog.
     this.renderer.xr.setFoveation(1)
     container.appendChild(this.renderer.domElement)
     document.body.appendChild(VRButton.createButton(this.renderer, { optionalFeatures: ['hand-tracking'] }))
@@ -48,19 +56,15 @@ export class Game {
     this.rig.add(this.camera)
     this.scene.add(this.rig)
     this.camera.position.set(0, 1.6, 0)
-    this.scene.add(this.bubbles.points)
 
-    this.world = new SeabedScene(this.scene, this.bubbles)
     this.controllers = new Controllers(this.renderer, this.rig)
     this.desktop = new DesktopControls(this.renderer.domElement, this.camera)
     this.vignette = new ComfortVignette(this.camera, settings.vignette)
-    this.player = new Player(this.rig, this.camera, this.controllers.hands, this.world.rocks, this.bubbles, this.vignette, settings.turn)
-    this.grab = new GrabSystem(this.scene, this.world.rocks, () => this.player.refillFull())
-    addSandboxProps(this.grab)
-
+    this.player = new Player(this.rig, this.camera, this.controllers.hands, this.vignette, settings.turn, settings.seated)
     this.fps = new FpsOverlay(this.renderer, this.controllers.leftGrip, settings.showFps)
     this.wrist = new WristComputer(this.controllers.leftGrip)
-    this.audio = new UnderwaterAudio(this.camera, this.controllers.hands)
+    this.audio = new AudioSystem(this.camera, this.scene, this.controllers.hands)
+    this.hud = new Hud(this.scene, this.camera)
 
     const startAudio = () => this.audio.start()
     window.addEventListener('pointerdown', startAudio)
@@ -74,31 +78,67 @@ export class Game {
     this.resize()
   }
 
-  start(): void {
+  get inXr(): boolean {
+    return this.renderer.xr.isPresenting
+  }
+
+  get hands(): Hand[] {
+    return this.inXr ? this.controllers.hands : [this.desktop.hand]
+  }
+
+  get halfHeight(): number {
+    if (this.inXr) {
+      const layer = this.renderer.xr.getBaseLayer() as (XRWebGLLayer & { textureHeight?: number }) | null
+      const height = layer?.framebufferHeight ?? layer?.textureHeight
+      if (height) return height / 2
+    }
+    return this.renderer.getDrawingBufferSize(this.size).y / 2
+  }
+
+  start(first: Stage): void {
+    this.stage = first
+    first.enter()
     this.renderer.setAnimationLoop((time) => this.tick(time))
+  }
+
+  goTo(next: () => Stage): void {
+    if (this.pending) return
+    this.pending = next
+    this.fadeDir = 1
   }
 
   private tick(time: number): void {
     this.timer.update(time)
     const dt = Math.min(this.timer.getDelta(), 0.1)
-    const inXr = this.renderer.xr.isPresenting
+    const inXr = this.inXr
 
     this.controllers.update(dt)
-    if (!inXr) this.desktop.update()
-    this.player.update(dt, inXr, this.desktop)
-    this.grab.update(dt, this.controllers.hands, this.player.physics.velocity, this.rig)
-    this.world.update(dt, time / 1000)
-    this.bubbles.update(dt)
-    this.audio.update(this.player.lastResult.thrust)
+    this.desktop.setActive(!inXr)
+    if (!inXr) {
+      this.desktop.update()
+      this.desktop.hand.update(dt)
+    }
+    this.stage?.update(dt, time / 1000)
+    this.updateTransition(dt)
+    this.hud.update(dt, inXr)
+    this.audio.update(dt, this.player.lastResult.thrust)
     this.vignette.update(dt, this.player.speed, this.player.physics.yawRate)
-    this.wrist.update(dt, {
-      air: this.player.air.fraction,
-      depth: this.player.depth,
-      speed: this.player.speed,
-      refilling: this.player.refilling,
-    })
     this.fps.update(time)
     this.renderer.render(this.scene, this.camera)
+  }
+
+  private updateTransition(dt: number): void {
+    if (this.fadeDir === 0) return
+    this.vignette.transition = THREE.MathUtils.clamp(this.vignette.transition + (this.fadeDir * dt) / FADE_SECONDS, 0, 1)
+    if (this.fadeDir > 0 && this.vignette.transition >= 1 && this.pending) {
+      this.stage?.exit()
+      this.stage = this.pending()
+      this.pending = null
+      this.stage.enter()
+      this.fadeDir = -1
+    } else if (this.fadeDir < 0 && this.vignette.transition <= 0) {
+      this.fadeDir = 0
+    }
   }
 
   private onSessionChange(inXr: boolean): void {

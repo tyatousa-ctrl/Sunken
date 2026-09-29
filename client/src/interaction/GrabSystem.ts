@@ -1,85 +1,73 @@
 import * as THREE from 'three'
 import type { Hand } from '../input/Hand'
-import { sandHeight, type RockCollider } from '../world/SeabedScene'
+import type { RockCollider } from '../world/SeabedScene'
 
 /** Reach beyond an object's surface that still counts as a grab (brief: ~10 cm). */
 export const GRAB_REACH = 0.1
 const LEDGE_REACH = 0.15
-const HIGHLIGHT = new THREE.Color(0x2e7896)
-const TANK_RESPAWN_SECONDS = 30
+/** The desktop stand-in hand can't be placed precisely, so it reaches further. */
+const VIRTUAL_REACH = 0.6
 
-export type GrabKind = 'item' | 'airTank'
-
-export interface Grabbable {
-  object: THREE.Object3D
-  /** Rough bounding radius (m). */
-  radius: number
-  kind: GrabKind
-  materials: THREE.MeshStandardMaterial[]
-  velocity: THREE.Vector3
-  heldBy: Hand | null
-  resting: boolean
-  respawnAt: number
+/** Anything a hand can pick up: loose props, guns, gear. */
+export interface Interactable {
+  /** Gap (m) between the hand point and the object's grab surface for this hand; Infinity if it can't be grabbed now. */
+  grabGap(point: THREE.Vector3, hand: Hand): number
+  grab(hand: Hand): void
+  /** `throwVelocity` is the hand's world velocity at release. */
+  release(hand: Hand, throwVelocity: THREE.Vector3): void
+  setHighlight(on: boolean): void
+  update?(dt: number): void
 }
 
-// Grip to grab: loose items attach to the hand, rocks and the seabed become handholds
-// the diver can pull along, and spare air tanks refill on touch.
+export interface Handholds {
+  rocks: RockCollider[]
+  floor?: (x: number, z: number) => number
+}
+
+// Grip to grab: the nearest interactable in reach, or else a rock / the seabed as a handhold
+// the diver can pull along (Player applies the pull).
 export class GrabSystem {
-  readonly items: Grabbable[] = []
+  readonly items: Interactable[] = []
   private readonly handPos = new THREE.Vector3()
-  private readonly itemPos = new THREE.Vector3()
-  private readonly tmp = new THREE.Vector3()
-  private elapsed = 0
+  private readonly throwVel = new THREE.Vector3()
+  private readonly lit = new Set<Interactable>()
 
-  constructor(
-    private readonly scene: THREE.Scene,
-    private readonly rocks: RockCollider[],
-    private readonly onAirTank: () => void,
-  ) {}
+  constructor(private readonly handholds: Handholds | null = null) {}
 
-  add(object: THREE.Object3D, radius: number, kind: GrabKind = 'item'): void {
-    const materials: THREE.MeshStandardMaterial[] = []
-    object.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) materials.push(child.material)
-    })
-    this.scene.add(object)
-    this.items.push({ object, radius, kind, materials, velocity: new THREE.Vector3(), heldBy: null, resting: false, respawnAt: 0 })
+  add<T extends Interactable>(item: T): T {
+    this.items.push(item)
+    return item
   }
 
-  /** `bodyVelocity` is the diver's world velocity; `rig` orients hand velocities into world space. */
   update(dt: number, hands: Hand[], bodyVelocity: THREE.Vector3, rig: THREE.Object3D): void {
-    this.elapsed += dt
     for (const hand of hands) {
       if (!hand.connected) continue
       if (hand.squeezePressed) this.tryGrab(hand)
       if (hand.squeezeReleased) this.release(hand, bodyVelocity, rig)
     }
-    for (const item of this.items) this.simulate(item, dt)
+    for (const item of this.items) item.update?.(dt)
     this.updateHighlights(hands)
+  }
+
+  /** Let go of whatever this hand holds (e.g. gear that just got equipped). */
+  drop(hand: Hand): void {
+    hand.held = null
+    hand.anchor = null
   }
 
   private tryGrab(hand: Hand): void {
     hand.worldPos(this.handPos)
-    const item = this.nearestItem(this.handPos)
+    const item = this.nearest(hand)
     if (item) {
-      if (item.kind === 'airTank') {
-        this.onAirTank()
-        item.object.visible = false
-        item.respawnAt = this.elapsed + TANK_RESPAWN_SECONDS
-        hand.pulse(0.8, 120)
-        return
-      }
-      item.heldBy = hand
-      item.resting = false
       hand.held = item
-      hand.grip.attach(item.object)
-      hand.pulse(0.35, 30)
+      item.grab(hand)
       return
     }
-    // No item in reach: hold on to a rock or the seabed instead.
-    const onRock = this.rocks.some((r) => this.handPos.distanceTo(r.center) - r.radius < LEDGE_REACH)
-    const onSand = this.handPos.y - sandHeight(this.handPos.x, this.handPos.z) < LEDGE_REACH
-    if (onRock || onSand) {
+    if (!this.handholds) return
+    const onRock = this.handholds.rocks.some((r) => this.handPos.distanceTo(r.center) - r.radius < LEDGE_REACH)
+    const floor = this.handholds.floor
+    const onFloor = floor ? this.handPos.y - floor(this.handPos.x, this.handPos.z) < LEDGE_REACH : false
+    if (onRock || onFloor) {
       hand.anchor = this.handPos.clone()
       hand.pulse(0.25, 25)
     }
@@ -90,18 +78,15 @@ export class GrabSystem {
     const item = hand.held
     if (!item) return
     hand.held = null
-    item.heldBy = null
-    this.scene.attach(item.object)
-    // Thrown items keep the hand's world velocity.
-    item.velocity.copy(hand.localVel).applyQuaternion(rig.quaternion).add(bodyVelocity)
+    const v = hand.virtual ? this.throwVel.copy(hand.localVel) : this.throwVel.copy(hand.localVel).applyQuaternion(rig.quaternion)
+    item.release(hand, v.add(bodyVelocity))
   }
 
-  private nearestItem(point: THREE.Vector3): Grabbable | null {
-    let best: Grabbable | null = null
-    let bestGap = GRAB_REACH
+  private nearest(hand: Hand): Interactable | null {
+    let best: Interactable | null = null
+    let bestGap = hand.virtual ? VIRTUAL_REACH : GRAB_REACH
     for (const item of this.items) {
-      if (!item.object.visible || item.heldBy) continue
-      const gap = point.distanceTo(item.object.getWorldPosition(this.itemPos)) - item.radius
+      const gap = item.grabGap(this.handPos, hand)
       if (gap < bestGap) {
         bestGap = gap
         best = item
@@ -110,44 +95,17 @@ export class GrabSystem {
     return best
   }
 
-  private simulate(item: Grabbable, dt: number): void {
-    if (!item.object.visible) {
-      if (item.respawnAt && this.elapsed >= item.respawnAt) {
-        item.object.visible = true
-        item.respawnAt = 0
-      }
-      return
-    }
-    if (item.heldBy || item.resting) return
-    // Slightly heavier than water: drifts, slows, and settles on the sand.
-    item.velocity.multiplyScalar(Math.exp(-1.5 * dt))
-    item.velocity.y -= 0.5 * dt
-    const pos = item.object.position
-    pos.addScaledVector(item.velocity, dt)
-    for (const rock of this.rocks) {
-      this.tmp.subVectors(pos, rock.center)
-      const minDist = rock.radius + item.radius * 0.6
-      if (this.tmp.lengthSq() < minDist * minDist) pos.copy(rock.center).addScaledVector(this.tmp.normalize(), minDist)
-    }
-    const floor = sandHeight(pos.x, pos.z) + item.radius * 0.5
-    if (pos.y <= floor) {
-      pos.y = floor
-      item.velocity.set(0, 0, 0)
-      item.resting = true
-    }
-  }
-
   private updateHighlights(hands: Hand[]): void {
-    const free = hands.filter((h) => h.connected && !h.held)
-    for (const item of this.items) {
-      let lit = false
-      if (item.object.visible && !item.heldBy) {
-        item.object.getWorldPosition(this.itemPos)
-        lit = free.some((h) => h.worldPos(this.handPos).distanceTo(this.itemPos) - item.radius < GRAB_REACH)
-      }
-      for (const material of item.materials) material.emissive.copy(lit ? HIGHLIGHT : BLACK)
+    const now = new Set<Interactable>()
+    for (const hand of hands) {
+      if (!hand.connected || hand.held) continue
+      hand.worldPos(this.handPos)
+      const item = this.nearest(hand)
+      if (item) now.add(item)
     }
+    for (const item of this.lit) if (!now.has(item)) item.setHighlight(false)
+    for (const item of now) if (!this.lit.has(item)) item.setHighlight(true)
+    this.lit.clear()
+    for (const item of now) this.lit.add(item)
   }
 }
-
-const BLACK = new THREE.Color(0x000000)

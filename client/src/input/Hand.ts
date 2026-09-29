@@ -1,10 +1,21 @@
 import * as THREE from 'three'
-import type { Grabbable } from '../interaction/GrabSystem'
+import type { Interactable } from '../interaction/GrabSystem'
 
 type Haptics = { hapticActuators?: { pulse?: (value: number, duration: number) => unknown }[] }
 
 const GRIP_ON = 0.6
 const GRIP_OFF = 0.4
+const TRIGGER_ON = 0.75
+const TRIGGER_OFF = 0.35
+
+/** Keyboard-driven stand-in for a controller (desktop testing). */
+export interface VirtualPad {
+  trigger: number
+  grip: number
+  stick: THREE.Vector2
+  primary: boolean
+  secondary: boolean
+}
 
 // One tracked Quest Touch controller: buttons, thumbstick, pose and velocity in rig space, haptics.
 export class Hand {
@@ -12,6 +23,8 @@ export class Hand {
   source: XRInputSource | null = null
 
   trigger = 0
+  /** Trigger crossed the "fire" threshold this frame. */
+  triggerPressed = false
   squeeze = false
   squeezePressed = false
   squeezeReleased = false
@@ -25,35 +38,39 @@ export class Hand {
   readonly localPos = new THREE.Vector3()
   readonly localVel = new THREE.Vector3()
 
-  held: Grabbable | null = null
+  held: Interactable | null = null
+  virtual: VirtualPad | null = null
   /** World point this hand is holding on to (a rock ledge), if any. */
   anchor: THREE.Vector3 | null = null
 
   private readonly prevLocal = new THREE.Vector3()
   private hasPrev = false
+  private triggerDown = false
   private primaryDown = false
   private secondaryDown = false
   private readonly q = new THREE.Quaternion()
 
   constructor(
-    readonly grip: THREE.XRGripSpace,
-    readonly ray: THREE.XRTargetRaySpace,
+    readonly grip: THREE.Object3D,
+    readonly ray: THREE.Object3D,
   ) {}
 
   get connected(): boolean {
-    return this.source !== null
+    return this.source !== null || this.virtual !== null
   }
 
   update(dt: number): void {
     const pad = this.source?.gamepad
     const wasSqueezed = this.squeeze
-    if (pad) {
-      this.trigger = pad.buttons[0]?.value ?? 0
-      const grip = pad.buttons[1]?.value ?? 0
+    const v = this.virtual
+    if (pad || v) {
+      this.trigger = pad ? (pad.buttons[0]?.value ?? 0) : v!.trigger
+      const grip = pad ? (pad.buttons[1]?.value ?? 0) : v!.grip
       this.squeeze = this.squeeze ? grip > GRIP_OFF : grip > GRIP_ON
-      this.stick.set(pad.axes[2] ?? 0, pad.axes[3] ?? 0)
-      const primary = pad.buttons[4]?.pressed ?? false
-      const secondary = pad.buttons[5]?.pressed ?? false
+      if (pad) this.stick.set(pad.axes[2] ?? 0, pad.axes[3] ?? 0)
+      else this.stick.copy(v!.stick)
+      const primary = pad ? (pad.buttons[4]?.pressed ?? false) : v!.primary
+      const secondary = pad ? (pad.buttons[5]?.pressed ?? false) : v!.secondary
       this.primaryPressed = primary && !this.primaryDown
       this.secondaryPressed = secondary && !this.secondaryDown
       this.primaryDown = primary
@@ -66,8 +83,13 @@ export class Hand {
     }
     this.squeezePressed = this.squeeze && !wasSqueezed
     this.squeezeReleased = !this.squeeze && wasSqueezed
+    const wasTriggered = this.triggerDown
+    this.triggerDown = this.triggerDown ? this.trigger > TRIGGER_OFF : this.trigger > TRIGGER_ON
+    this.triggerPressed = this.triggerDown && !wasTriggered
 
-    this.localPos.copy(this.grip.position)
+    // Virtual hands ride on the camera, so their "local" pose is taken in world space.
+    if (this.virtual) this.grip.getWorldPosition(this.localPos)
+    else this.localPos.copy(this.grip.position)
     if (this.hasPrev && dt > 0 && this.connected) {
       const raw = this.prevLocal.sub(this.localPos).multiplyScalar(-1 / dt)
       this.localVel.lerp(raw, 0.5)

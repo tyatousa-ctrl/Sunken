@@ -15,6 +15,7 @@ export class WristComputer {
   private readonly dom = document.createElement('div')
   private sinceDraw = 1
   private blink = 0
+  private readonly face: THREE.Mesh
 
   constructor(wrist: THREE.Object3D) {
     this.canvas.width = 320
@@ -22,10 +23,10 @@ export class WristComputer {
     this.ctx = this.canvas.getContext('2d')!
     this.texture = new THREE.CanvasTexture(this.canvas)
     this.texture.colorSpace = THREE.SRGBColorSpace
-    const face = new THREE.Mesh(
+    const face = (this.face = new THREE.Mesh(
       new THREE.PlaneGeometry(0.08, 0.04),
       new THREE.MeshBasicMaterial({ map: this.texture, fog: false }),
-    )
+    ))
     // Strapped on top of the left wrist, tilted toward the eyes when you look at your watch.
     face.position.set(0.0, 0.015, 0.075)
     face.rotation.set(-Math.PI / 2.4, 0, 0)
@@ -33,6 +34,12 @@ export class WristComputer {
 
     this.dom.className = 'dive-dom'
     document.body.appendChild(this.dom)
+  }
+
+  /** The dive computer only shows once you're diving. */
+  setVisible(visible: boolean): void {
+    this.face.visible = visible
+    this.dom.style.display = visible ? '' : 'none'
   }
 
   update(dt: number, status: DiveStatus): void {

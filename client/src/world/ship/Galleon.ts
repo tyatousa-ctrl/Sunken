@@ -1,0 +1,341 @@
+import * as THREE from 'three'
+import { mergeStatic } from '../merge'
+
+export type FlagKind = 'merchant' | 'pirate' | 'crew'
+
+export interface GalleonOptions {
+  hullColor?: number
+  sailColor?: number
+  flag?: FlagKind
+}
+
+/** Deck outline (x, z) in ship-local metres, starboard side, stern → bow. Mirrored for port. */
+const STARBOARD: [number, number][] = [
+  [3.6, 13],
+  [3.8, 4],
+  [3.4, -6],
+  [2.0, -11],
+  [0.0, -14.5],
+]
+export const DECK_Y = 2.2
+export const RAIL_HEIGHT = 1.0
+export const STERN_Z = 13
+export const BOW_Z = -14.5
+/** The captain's cabin occupies the stern from here back. */
+export const CABIN_FRONT_Z = 9.6
+const HULL_DEPTH = 4
+
+/** Half the deck width at ship-local z. */
+export function halfWidthAt(z: number): number {
+  if (z >= STARBOARD[0][1]) return STARBOARD[0][0]
+  for (let i = 0; i < STARBOARD.length - 1; i++) {
+    const [x0, z0] = STARBOARD[i]
+    const [x1, z1] = STARBOARD[i + 1]
+    if (z <= z0 && z >= z1) return x0 + ((z - z0) / (z1 - z0)) * (x1 - x0)
+  }
+  return 0
+}
+
+// A pirate galleon built from primitives. `group` carries the whole ship (sinking and tilting are
+// applied there); `shake` sits inside it and only jitters visually, so the deck the player stands
+// on never shakes their head.
+export class Galleon {
+  readonly group = new THREE.Group()
+  readonly shake = new THREE.Group()
+  readonly foremast = new THREE.Group()
+  readonly mainmast = new THREE.Group()
+  /** Meshes a pellet or cannonball can hit. */
+  readonly hitMeshes: THREE.Mesh[] = []
+  /** Muzzle points (ship-local) of the starboard and port cannons. */
+  readonly starboardGuns: THREE.Vector3[] = []
+  readonly portGuns: THREE.Vector3[] = []
+  private readonly flag: THREE.Mesh
+  private readonly flagTextures = new Map<FlagKind, THREE.Texture>()
+
+  constructor(options: GalleonOptions = {}) {
+    this.group.add(this.shake)
+    const wood = new THREE.MeshStandardMaterial({ color: options.hullColor ?? 0x5b3a21, roughness: 0.85, side: THREE.DoubleSide })
+    const darkWood = new THREE.MeshStandardMaterial({ color: 0x3b2413, roughness: 0.9 })
+    const trim = new THREE.MeshStandardMaterial({ color: 0xc9a13b, roughness: 0.6, metalness: 0.2 })
+    const sail = new THREE.MeshStandardMaterial({ color: options.sailColor ?? 0xe8dcc0, roughness: 0.95, side: THREE.DoubleSide })
+    const iron = new THREE.MeshStandardMaterial({ color: 0x22262a, roughness: 0.5, metalness: 0.6 })
+
+    // Hull, deck, rails, cabin and cannons never move relative to the ship: merged into a few meshes.
+    const structure = new THREE.Group()
+    const hull = new THREE.Mesh(makeHullGeometry(), wood)
+    const wale = new THREE.Mesh(makeWaleGeometry(), trim)
+    const deck = new THREE.Mesh(makeDeckGeometry(), new THREE.MeshStandardMaterial({ map: makePlankTexture(), roughness: 0.9 }))
+    structure.add(hull, wale, deck, makeRails(darkWood), makeCabin(wood, darkWood, trim))
+    this.shake.add(structure)
+
+    this.buildMast(this.mainmast, 0, 16, 5.5, darkWood, sail)
+    this.buildMast(this.foremast, -8, 13, 4.5, darkWood, sail)
+    this.shake.add(this.mainmast, this.foremast)
+
+    for (const z of [-4, 2, 6.5]) {
+      for (const side of [1, -1]) {
+        const cannon = makeCannon(iron, darkWood)
+        const x = side * (halfWidthAt(z) - 0.55)
+        cannon.position.set(x, DECK_Y, z)
+        cannon.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2
+        structure.add(cannon)
+        ;(side > 0 ? this.starboardGuns : this.portGuns).push(new THREE.Vector3(side * (halfWidthAt(z) + 0.6), DECK_Y + 0.55, z))
+      }
+    }
+
+    this.flag = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.8, 1.1, 6, 1).translate(0.9, 0, 0),
+      new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 1 }),
+    )
+    this.flag.position.set(0.1, 16.3, 0)
+    this.flag.rotation.y = Math.PI / 2
+    this.mainmast.add(this.flag)
+    this.hitMeshes.push(this.flag)
+    this.setFlag(options.flag ?? 'crew')
+    this.hitMeshes.push(...mergeStatic(structure))
+  }
+
+  /** For ships only ever seen whole (the distant enemy, the wreck): merge everything but the flag. */
+  mergeAll(): void {
+    this.hitMeshes.length = 0
+    this.hitMeshes.push(...mergeStatic(this.shake, [this.flag]), this.flag)
+  }
+
+  setFlag(kind: FlagKind): void {
+    let texture = this.flagTextures.get(kind)
+    if (!texture) {
+      texture = makeFlagTexture(kind)
+      this.flagTextures.set(kind, texture)
+    }
+    ;(this.flag.material as THREE.MeshStandardMaterial).map = texture
+    ;(this.flag.material as THREE.MeshStandardMaterial).needsUpdate = true
+  }
+
+  /** Ripple the flag and sails a little. */
+  update(elapsed: number): void {
+    const pos = this.flag.geometry.attributes.position as THREE.BufferAttribute
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i)
+      pos.setZ(i, Math.sin(elapsed * 4 + x * 3) * 0.08 * x)
+    }
+    pos.needsUpdate = true
+  }
+
+  private buildMast(mast: THREE.Group, z: number, height: number, yardWidth: number, wood: THREE.Material, sailMat: THREE.Material): void {
+    // Pivot at deck level so a shot-away mast topples from its foot.
+    mast.position.set(0, DECK_Y, z)
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.24, height, 10), wood)
+    pole.position.y = height / 2
+    mast.add(pole)
+    this.hitMeshes.push(pole)
+    for (const [y, w, h] of [
+      // Lowest sail's foot stays well above head height on deck.
+      [height * 0.5, yardWidth, height * 0.28],
+      [height * 0.85, yardWidth * 0.75, height * 0.2],
+    ]) {
+      const yard = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, w + 0.6, 6), wood)
+      yard.rotation.z = Math.PI / 2
+      yard.position.y = y
+      mast.add(yard)
+      const sail = new THREE.Mesh(makeSailGeometry(w, h), sailMat)
+      sail.position.set(0, y - h / 2 - 0.05, -0.05)
+      mast.add(sail)
+      this.hitMeshes.push(sail)
+    }
+    const crow = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.45, 0.35, 10, 1, true), wood)
+    crow.position.y = height * 0.65
+    mast.add(crow)
+  }
+}
+
+function outlinePoints(): THREE.Vector2[] {
+  const starboard = STARBOARD.map(([x, z]) => new THREE.Vector2(x, z))
+  const port = STARBOARD.slice(0, -1)
+    .reverse()
+    .map(([x, z]) => new THREE.Vector2(-x, z))
+  return [...starboard, ...port]
+}
+
+function makeHullGeometry(): THREE.BufferGeometry {
+  const shape = new THREE.Shape(outlinePoints())
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: HULL_DEPTH, steps: 4, bevelEnabled: false, curveSegments: 1 })
+  // Shape (x, z) → extruded downward from the deck.
+  geometry.rotateX(Math.PI / 2)
+  const pos = geometry.attributes.position as THREE.BufferAttribute
+  for (let i = 0; i < pos.count; i++) {
+    // Taper towards the keel so the hull reads as a boat, not a box.
+    const depth = -pos.getY(i) / HULL_DEPTH
+    pos.setX(i, pos.getX(i) * (1 - 0.45 * depth * depth))
+    pos.setZ(i, pos.getZ(i) * (1 - 0.1 * depth))
+  }
+  geometry.translate(0, DECK_Y + 0.3, 0)
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+function makeWaleGeometry(): THREE.BufferGeometry {
+  const shape = new THREE.Shape(outlinePoints().map((p) => new THREE.Vector2(p.x * 1.03, p.y * 1.01)))
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: 0.22, bevelEnabled: false })
+  geometry.rotateX(Math.PI / 2)
+  geometry.translate(0, DECK_Y - 0.5, 0)
+  return geometry
+}
+
+function makeDeckGeometry(): THREE.BufferGeometry {
+  // Mirror z so that rotating by -90° puts the shape flat with its face up.
+  const shape = new THREE.Shape(outlinePoints().map((p) => new THREE.Vector2(p.x * 0.98, -p.y * 0.99)))
+  const geometry = new THREE.ShapeGeometry(shape)
+  geometry.rotateX(-Math.PI / 2)
+  geometry.translate(0, DECK_Y, 0)
+  // Planks run bow to stern: map UVs from deck coordinates.
+  const pos = geometry.attributes.position as THREE.BufferAttribute
+  const uv = geometry.attributes.uv as THREE.BufferAttribute
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / 4, pos.getZ(i) / 4)
+  return geometry
+}
+
+function makeRails(material: THREE.Material): THREE.Group {
+  const rails = new THREE.Group()
+  const points = outlinePoints()
+  const post = new THREE.CylinderGeometry(0.05, 0.05, RAIL_HEIGHT, 6)
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i]
+    const b = points[(i + 1) % points.length]
+    // The stern edge is the cabin's back wall; no rail there.
+    if (a.y >= STERN_Z && b.y >= STERN_Z) continue
+    const length = a.distanceTo(b)
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, length), material)
+    top.position.set((a.x + b.x) / 2, DECK_Y + RAIL_HEIGHT, (a.y + b.y) / 2)
+    top.rotation.y = Math.atan2(b.x - a.x, b.y - a.y)
+    rails.add(top)
+    const steps = Math.max(1, Math.round(length / 1.4))
+    for (let s = 0; s < steps; s++) {
+      const t = s / steps
+      const p = new THREE.Mesh(post, material)
+      p.position.set(a.x + (b.x - a.x) * t, DECK_Y + RAIL_HEIGHT / 2, a.y + (b.y - a.y) * t)
+      rails.add(p)
+    }
+  }
+  return rails
+}
+
+function makeCabin(wood: THREE.Material, dark: THREE.Material, trim: THREE.Material): THREE.Group {
+  const cabin = new THREE.Group()
+  const depth = STERN_Z - CABIN_FRONT_Z
+  const width = halfWidthAt(STERN_Z) * 2 - 0.2
+  const body = new THREE.Mesh(new THREE.BoxGeometry(width, 2.6, depth), wood)
+  body.position.set(0, DECK_Y + 1.3, CABIN_FRONT_Z + depth / 2)
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(width + 0.3, 0.15, depth + 0.3), dark)
+  roof.position.set(0, DECK_Y + 2.65, CABIN_FRONT_Z + depth / 2)
+  const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.9, 0.08), dark)
+  door.position.set(0, DECK_Y + 0.95, CABIN_FRONT_Z - 0.02)
+  cabin.add(body, roof, door)
+  for (const x of [-2.2, 2.2]) {
+    const window = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.06), trim)
+    window.position.set(x, DECK_Y + 1.5, CABIN_FRONT_Z - 0.02)
+    cabin.add(window)
+  }
+  return cabin
+}
+
+function makeCannon(iron: THREE.Material, wood: THREE.Material): THREE.Group {
+  const cannon = new THREE.Group()
+  const carriage = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.35, 0.9), wood)
+  carriage.position.y = 0.25
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.16, 1.5, 10), iron)
+  barrel.rotation.x = Math.PI / 2
+  barrel.position.set(0, 0.55, -0.35)
+  cannon.add(carriage, barrel)
+  return cannon
+}
+
+function makeSailGeometry(width: number, height: number): THREE.BufferGeometry {
+  const geometry = new THREE.PlaneGeometry(width, height, 8, 6)
+  const pos = geometry.attributes.position as THREE.BufferAttribute
+  for (let i = 0; i < pos.count; i++) {
+    const u = pos.getX(i) / width + 0.5
+    const v = pos.getY(i) / height + 0.5
+    // Billow forward, fullest in the middle.
+    pos.setZ(i, -Math.sin(Math.PI * u) * Math.sin(Math.PI * v) * width * 0.12)
+  }
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+function makePlankTexture(): THREE.CanvasTexture {
+  const size = 512
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const planks = 8
+  for (let i = 0; i < planks; i++) {
+    const shade = 150 + Math.floor(Math.random() * 30)
+    ctx.fillStyle = `rgb(${shade}, ${Math.floor(shade * 0.75)}, ${Math.floor(shade * 0.48)})`
+    ctx.fillRect((i * size) / planks, 0, size / planks, size)
+    ctx.fillStyle = 'rgba(40, 25, 10, 0.8)'
+    ctx.fillRect((i * size) / planks, 0, 3, size)
+    // Butt joints at staggered heights.
+    ctx.fillRect((i * size) / planks, ((i * 0.37) % 1) * size, size / planks, 3)
+  }
+  for (let i = 0; i < 1500; i++) {
+    ctx.fillStyle = `rgba(60, 35, 15, ${Math.random() * 0.12})`
+    ctx.fillRect(Math.random() * size, Math.random() * size, 1 + Math.random() * 2, 6 + Math.random() * 30)
+  }
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  return texture
+}
+
+function makeFlagTexture(kind: FlagKind): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = 256
+  canvas.height = 160
+  const ctx = canvas.getContext('2d')!
+  if (kind === 'merchant') {
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = i % 2 ? '#f4f1e8' : '#2f5e9e'
+      ctx.fillRect(0, i * 32, 256, 32)
+    }
+  } else if (kind === 'crew') {
+    // Our own colours: Sicilian red and gold halves with a black triskelion-ish sun.
+    ctx.fillStyle = '#c8322b'
+    ctx.fillRect(0, 0, 256, 160)
+    ctx.fillStyle = '#e8b930'
+    ctx.beginPath()
+    ctx.moveTo(256, 0)
+    ctx.lineTo(256, 160)
+    ctx.lineTo(0, 160)
+    ctx.fill()
+    ctx.fillStyle = '#1a1a1a'
+    ctx.beginPath()
+    ctx.arc(128, 80, 26, 0, Math.PI * 2)
+    ctx.fill()
+  } else {
+    ctx.fillStyle = '#0d0d0d'
+    ctx.fillRect(0, 0, 256, 160)
+    ctx.fillStyle = '#f2efe6'
+    ctx.beginPath()
+    ctx.arc(128, 66, 28, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillRect(112, 84, 32, 18)
+    ctx.fillStyle = '#0d0d0d'
+    ctx.beginPath()
+    ctx.arc(117, 64, 7, 0, Math.PI * 2)
+    ctx.arc(139, 64, 7, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#f2efe6'
+    ctx.lineWidth = 12
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(78, 110)
+    ctx.lineTo(178, 146)
+    ctx.moveTo(178, 110)
+    ctx.lineTo(78, 146)
+    ctx.stroke()
+  }
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}

@@ -16,3 +16,5 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #03203a; fon
 .fps-dom { top: 12px; }
 .dive-dom { top: 40px; }
 .dive-dom.low { color: #ffb347; }
+.hud-dom { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); max-width: min(720px, calc(100% - 32px)); padding: 8px 14px; border-radius: 10px; background: rgba(0,0,0,0.65); font: 600 15px/1.35 system-ui, sans-serif; text-align: center; pointer-events: none; }
+body.in-xr .hud-dom, body.in-xr .dive-dom { display: none; }

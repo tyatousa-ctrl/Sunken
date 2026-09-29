@@ -1,11 +1,19 @@
 import * as THREE from 'three'
 import { applyCaustics } from './caustics'
-import { sandHeight, VENT_POSITION } from './SeabedScene'
+import { sandHeight, VENT_POSITION, type RockCollider } from './SeabedScene'
 import type { GrabSystem } from '../interaction/GrabSystem'
+import { LooseItem } from '../interaction/LooseItem'
+
+const TANK_RESPAWN_SECONDS = 30
 
 // Placeholder grabbable props for the movement sandbox, built from primitives:
 // Greek amphorae, shells, Mediterranean red starfish and a spare air tank.
-export function addSandboxProps(grab: GrabSystem): void {
+export function addSandboxProps(root: THREE.Group, grab: GrabSystem, rocks: RockCollider[], onAirTank: () => void): void {
+  const add = (object: THREE.Object3D, radius: number) => {
+    root.add(object)
+    grab.add(new LooseItem(object, { radius, settle: 'water', floor: sandHeight, rocks }))
+  }
+
   const amphorae: [number, number, number][] = [
     [-1.6, -3.2, 0.3],
     [2.2, -4.6, 1.4],
@@ -15,14 +23,14 @@ export function addSandboxProps(grab: GrabSystem): void {
     const amphora = makeAmphora()
     amphora.rotation.set(tilt, Math.random() * Math.PI, 0)
     place(amphora, x, z, 0.12)
-    grab.add(amphora, 0.22)
+    add(amphora, 0.22)
   }
 
   for (let i = 0; i < 6; i++) {
     const angle = i * 1.1 + 0.4
     const shell = makeShell()
     place(shell, Math.cos(angle) * (1.8 + i * 0.5), Math.sin(angle) * (1.8 + i * 0.5) - 1, 0.02)
-    grab.add(shell, 0.05)
+    add(shell, 0.05)
   }
 
   const starfish: [number, number][] = [
@@ -33,13 +41,31 @@ export function addSandboxProps(grab: GrabSystem): void {
   for (const [x, z] of starfish) {
     const star = makeStarfish()
     place(star, x, z, 0.02)
-    grab.add(star, 0.1)
+    add(star, 0.1)
   }
 
   const tank = makeAirTank()
   place(tank, VENT_POSITION.x + 1.6, VENT_POSITION.z + 1.2, 0.09)
   tank.rotation.z = Math.PI / 2
-  grab.add(tank, 0.18, 'airTank')
+  root.add(tank)
+  // Touching the spare tank refills your air; it reappears a while later.
+  grab.add(
+    new LooseItem(tank, {
+      radius: 0.18,
+      settle: 'home',
+      onGrab: (hand, item) => {
+        onAirTank()
+        hand.pulse(0.8, 120)
+        item.enabled = false
+        tank.visible = false
+        setTimeout(() => {
+          item.enabled = true
+          tank.visible = true
+        }, TANK_RESPAWN_SECONDS * 1000)
+        return true
+      },
+    }),
+  )
 }
 
 function place(object: THREE.Object3D, x: number, z: number, lift: number): void {
