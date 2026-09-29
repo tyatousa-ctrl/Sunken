@@ -47,6 +47,8 @@ interface Pull {
 export interface Handholds {
   rocks: RockCollider[]
   floor?: (x: number, z: number) => number
+  /** Something to climb (the rigging net): is the hand on it? Checked before distance pulls. */
+  climb?: (point: THREE.Vector3) => boolean
 }
 
 // Grip to grab: the nearest interactable in reach; else whatever the pointer is on, up to 5 ft away,
@@ -99,6 +101,12 @@ export class GrabSystem {
     if (item) {
       hand.held = item
       item.grab(hand)
+      return
+    }
+    // (Keyboard players climb with Space / Q instead: their hand rides on the camera.)
+    if (!hand.virtual && this.handholds?.climb?.(this.handPos)) {
+      hand.anchor = this.handPos.clone()
+      hand.pulse(0.3, 25)
       return
     }
     const far = this.aimed.get(hand) ?? this.aim(hand)

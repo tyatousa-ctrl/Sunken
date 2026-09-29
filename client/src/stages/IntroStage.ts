@@ -20,6 +20,8 @@ import type { CharacterClass } from '../systems/crew'
 import { CLASS_NAMES } from '../systems/crew'
 import { saveSettings } from '../core/settings'
 import { BOW_Z, CABIN_FRONT_Z, DECK_Y, Galleon, STERN_Z, halfWidthAt } from '../world/ship/Galleon'
+import { NET_OBSTACLES, Rigging } from '../intro/Rigging'
+import { DeckCannons, MATCH_CRATE } from '../intro/DeckCannons'
 import { Level1Stage } from './Level1Stage'
 
 /** The "harmless merchant" anchored in the bay, ~150 m off the starboard bow. */
@@ -45,6 +47,8 @@ const OBSTACLES: Obstacle[] = [
   { x: BARREL_POSITION.x, z: BARREL_POSITION.z, r: 0.6 },
   { x: -2.35, z: BOARD_POSITION.z - THROW_DISTANCE - 0.1, r: 0.15 },
   { x: CREW_BOARD_SPOT.x, z: CREW_BOARD_SPOT.z, r: 0.35 },
+  { x: MATCH_CRATE.x, z: MATCH_CRATE.z, r: 0.35 },
+  ...NET_OBSTACLES,
 ]
 
 // Milestone 3: golden hour on the galleon's deck. Clay shooting is the fake-out; a stray pellet into
@@ -59,7 +63,13 @@ export class IntroStage implements Stage {
   private readonly fire = new Particles({ max: 400, gravity: 1.5, drag: 1, blending: THREE.AdditiveBlending })
   private readonly debris = new Particles({ max: 400, gravity: -9.8, drag: 0.3 })
   private readonly splash = new Particles({ max: 400, gravity: -9.8, drag: 0.4 })
-  private readonly grab = new GrabSystem()
+  // The rigging net is a handhold: grip it to climb.
+  private readonly grab = new GrabSystem({ rocks: [], climb: (p) => this.rigging?.onNet(p, 0.12) ?? false })
+  private rigging!: Rigging
+  private cannons!: DeckCannons
+  /** The prompt the rigging put up (so we only clear our own). */
+  private riggingPrompt = ''
+  private sawTheView = false
   private readonly guns: Shotgun[] = []
   private readonly raycaster = new THREE.Raycaster()
   private above!: AboveWater
@@ -106,7 +116,23 @@ export class IntroStage implements Stage {
     for (const p of [this.smoke, this.fire, this.debris, this.splash]) this.root.add(p.points)
 
     this.buildGunRack()
-    this.range = new ClayRange(this.root, this.ship, { audio: game.audio, debris: this.debris, splash: this.splash })
+    this.range = new ClayRange(this.root, this.ship, {
+      audio: game.audio,
+      debris: this.debris,
+      splash: this.splash,
+      onThrow: (at, vel, local) => game.net?.send('throwClay', { at: at.toArray(), vel: vel.toArray(), local }),
+    })
+    this.grab.add(this.range.stack)
+    this.rigging = new Rigging(this.ship)
+    this.cannons = new DeckCannons(this.root, this.ship, this.grab, {
+      audio: game.audio,
+      smoke: this.smoke,
+      fire: this.fire,
+      splash: this.splash,
+      debris: this.debris,
+      hitTest: (a, b) => this.cannonHit(a, b),
+      onFire: (i) => game.net?.send('cannon', { i }),
+    })
     this.crew = new Crew(this.ship, this.root)
     this.gear = new GearRack(this.ship, this.grab, game.camera, game.audio, (hand) => this.grab.drop(hand))
     this.gear.onChange = (piece) => this.onGear(piece)
@@ -132,7 +158,7 @@ export class IntroStage implements Stage {
     const fog = game.scene.fog as THREE.Fog
     this.baseFog = { near: fog.near, far: fog.far }
 
-    game.player.enter(walk, new THREE.Vector3(0, DECK_Y, 3), Math.PI)
+    game.player.enter(walk, new THREE.Vector3(0.3, DECK_Y, 4.3), Math.PI)
     this.connectNet()
     game.audio.setEnvironment('air')
     game.wrist.setVisible(false)
@@ -143,9 +169,9 @@ export class IntroStage implements Stage {
 
   guide(): ButtonGuide {
     return {
-      left: ['Stick: walk', 'X: jump', 'Grip: grab (point: pull)', 'Trigger: fire · pour'],
-      right: ['Stick: turn', 'A: jump', 'Grip: grab (point: pull)', 'Trigger: fire · pour'],
-      desktop: ['<b>Deck</b>', 'Drag: look · WASD: walk · Space: jump', 'E: grab / drop · F: trigger · R: reload'],
+      left: ['Stick: walk', 'X: jump', 'Grip: grab · climb net', '(point + grip: pull to you)', 'Trigger: fire · pour · strike', 'match · throw dart'],
+      right: ['Stick: turn', 'A: jump', 'Grip: grab · climb net', '(point + grip: pull to you)', 'Trigger: fire · pour · strike', 'match · throw dart'],
+      desktop: ['<b>Deck</b>', 'Drag: look · WASD: walk · Space: jump', 'At the net: Space / Q climb up / down', 'E: grab / drop · F: trigger · R: reload'],
     }
   }
 
@@ -157,6 +183,9 @@ export class IntroStage implements Stage {
     this.range.update(dt)
     this.darts.update(dt, game.hands, game.camera)
     this.barrel.update(game.camera)
+    this.range.faceSign(game.camera)
+    this.cannons.update(dt, game.camera)
+    this.updateRigging()
     this.crewBoard.update(dt, game.hands, game.bots.members(), game.net?.sessionId ?? 'me')
     this.updateDrunk(dt)
     this.crew.update(dt, elapsed)
@@ -192,6 +221,12 @@ export class IntroStage implements Stage {
     game.record.whoShotFirst = shooter
     game.audio.silence(1.2)
     game.hud.clear()
+    this.riggingPrompt = ''
+    // Anyone up the rigging is back on deck: the mast is about to take hits.
+    if (game.player.climbing || this.rigging.inNest(game.camera.getWorldPosition(this.v))) {
+      game.player.placeFeet(this.rigging.footOfNet(this.v))
+      game.player.noJump = false
+    }
     // Beer and darts are over; everybody's needed now.
     for (const mug of this.barrel.mugs) mug.dropNow()
     this.attack = new AttackSequence(this.root, this.ship, this.enemy, this.broadsideYaw, {
@@ -275,6 +310,11 @@ export class IntroStage implements Stage {
       this.game.hud.say('Pull!', 1.2, 'Salvo')
     })
     on<{ id: number }>('clayBroken', (msg) => this.range.shatterById(msg.id))
+    on<{ i: number }>('cannon', (msg) => this.cannons.fireRemote(msg.i))
+    on<{ id: number; at: number[]; vel: number[]; by: string; local: number }>('clayThrown', (msg) => {
+      if (msg.by === net.sessionId) this.range.renameClay(msg.local, msg.id)
+      else if (this.phase === 'fakeout') this.range.launchThrown(msg.id, new THREE.Vector3().fromArray(msg.at), new THREE.Vector3().fromArray(msg.vel))
+    })
     on<{ at: number; shooter: string }>('attack', (msg) => this.joinAttack(msg.at, msg.shooter))
     // Joining a crew that's already under attack (or past it): catch up.
     if (net.state?.attackAt) this.joinAttack(net.state.attackAt, net.state.shooter)
@@ -386,6 +426,56 @@ export class IntroStage implements Stage {
         else this.startAttack('You')
         return
       }
+    }
+  }
+
+  // ---- Cannons and rigging ------------------------------------------------------------------------
+
+  /** A cannonball from `a` to `b`: did it hit the ship in the bay? Hitting her starts the attack. */
+  private cannonHit(a: THREE.Vector3, b: THREE.Vector3): THREE.Vector3 | null {
+    const length = a.distanceTo(b)
+    if (length < 1e-4) return null
+    this.enemy.group.updateMatrixWorld(true)
+    this.raycaster.set(a, this.v2.subVectors(b, a).normalize())
+    this.raycaster.far = length
+    const hit = this.raycaster.intersectObjects(this.enemy.hitMeshes, false)[0]
+    if (!hit) return null
+    if (this.phase === 'fakeout') {
+      if (this.game.net) this.game.net.send('hitShip')
+      else this.startAttack('You')
+    }
+    return hit.point.clone()
+  }
+
+  /** Climbing into and out of the crow's nest, with A/X (R on the keyboard). */
+  private updateRigging(): void {
+    const { game } = this
+    const player = game.player
+    if (this.phase !== 'fakeout') {
+      player.noJump = false
+      return
+    }
+    const head = game.camera.getWorldPosition(this.v)
+    const inNest = this.rigging.inNest(head)
+    const atTop = !inNest && player.climbing && this.rigging.nearTop(head)
+    player.noJump = inNest || atTop
+    const key = game.inXr ? 'A/X' : 'R'
+    const prompt = atTop ? `${key}: climb into the crow's nest` : inNest ? `${key}: climb back out onto the net` : ''
+    if (prompt !== this.riggingPrompt) {
+      if (prompt || this.riggingPrompt) game.hud.setPrompt(prompt)
+      this.riggingPrompt = prompt
+    }
+    const pressed = game.hands.some((h) => h.connected && h.primaryPressed && !h.held)
+    if (!pressed) return
+    if (atTop) {
+      player.placeFeet(this.rigging.nestSpot(this.v2))
+      game.audio.play('thud', this.v2, 0.4)
+      if (!this.sawTheView) {
+        this.sawTheView = true
+        game.hud.say('What a view! You can see the whole bay from up here.', 4)
+      }
+    } else if (inNest) {
+      player.placeHead(this.rigging.netTopHang(this.v2))
     }
   }
 
@@ -551,12 +641,27 @@ export class IntroStage implements Stage {
     return {
       kind: 'walk',
       waterY: 0,
-      groundHeight: (x, z) => {
+      climbable: (p, reach) => this.rigging.onNet(p, reach),
+      climbUp: (target) => this.rigging.upTheNet(target),
+      climbHold: (head, target) => this.rigging.holdOffset(head, target),
+      groundHeight: (x, z, below) => {
+        if (below !== undefined) {
+          const nest = this.rigging?.nestFloorAt(x, z, below) ?? null
+          if (nest !== null) return nest
+        }
         const p = toLocal(x, z)
         if (p.z > STERN_Z || p.z < BOW_Z || Math.abs(p.x) > halfWidthAt(p.z)) return null
         return ship.localToWorld(p.setY(DECK_Y)).y
       },
       constrain: (head) => {
+        if (this.rigging?.inNest(head)) {
+          const q = ship.worldToLocal(local.copy(head))
+          this.rigging.constrainInNest(q)
+          const world = ship.localToWorld(q)
+          head.x = world.x
+          head.z = world.z
+          return
+        }
         const p = toLocal(head.x, head.z)
         const open = this.phase === 'attack' && railsOpen(this.attack!.t, this.gear.complete)
         const cabinFront = CABIN_FRONT_Z - RAIL_MARGIN

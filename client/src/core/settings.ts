@@ -25,7 +25,7 @@ export interface Settings {
 }
 
 const KEY = 'sunken-sicily.settings'
-const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap', seated: false, drunkFx: true, muted: false, name: '', spellMenu: false, character: 'strongman', ambience: 0.5, buttonHints: true }
+const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap', seated: false, drunkFx: true, muted: false, name: '', spellMenu: false, character: 'strongman', ambience: 0.3, buttonHints: true }
 
 export function loadSettings(): Settings {
   try {

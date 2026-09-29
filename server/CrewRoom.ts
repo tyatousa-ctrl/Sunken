@@ -99,6 +99,15 @@ export class CrewRoom extends Room<{ state: CrewState }> {
       const count = Math.random() < 0.3 ? 2 : 1
       for (let i = 0; i < count; i++) this.broadcast('clay', { id: ++this.clayId, seed: Math.floor(Math.random() * 2 ** 31), delay: i * 0.3 })
     })
+    // A player threw a clay by hand: give it a crew-wide id so hits count once, and show it to everyone.
+    this.onMessage('throwClay', (client, msg: { at?: number[]; vel?: number[]; local?: number }) => {
+      if (this.state.attackAt || !isVec3(msg?.at) || !isVec3(msg?.vel) || typeof msg.local !== 'number') return
+      this.broadcast('clayThrown', { id: ++this.clayId, at: msg.at, vel: msg.vel, by: client.sessionId, local: msg.local })
+    })
+    // Someone fired a deck cannon: everyone else sees and hears it.
+    this.onMessage('cannon', (client, msg: { i?: number }) => {
+      if (typeof msg?.i === 'number') this.broadcast('cannon', { i: msg.i, by: client.sessionId }, { except: client })
+    })
     this.onMessage('shot', (client) => {
       const player = this.player(client)
       if (player) player.shots++
@@ -218,4 +227,8 @@ export class CrewRoom extends Room<{ state: CrewState }> {
     for (const [id, pose] of this.botPoses) if (!humanSlots.has(id)) players[id] = pose
     this.broadcast('poses', { t: Date.now(), players })
   }
+}
+
+function isVec3(v: unknown): v is number[] {
+  return Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) < 1e4)
 }

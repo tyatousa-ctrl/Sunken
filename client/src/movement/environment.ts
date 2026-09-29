@@ -32,11 +32,21 @@ export interface SwimEnvironment {
 /** On foot: gravity, a walkable surface, and water to fall into. */
 export interface WalkEnvironment {
   kind: 'walk'
-  /** Height of the walkable surface under a world point, or null where there's none (over the side). */
-  groundHeight(x: number, z: number): number | null
+  /**
+   * Height of the walkable surface under a world point, or null where there's none (over the side).
+   * `below`: only surfaces at or under this height count (so you're on the deck under the crow's
+   * nest, and on the nest floor when you're up in it). Omitted: the lowest walkable surface.
+   */
+  groundHeight(x: number, z: number, below?: number): number | null
   /** Keep a head position inside walkable space by moving it horizontally (rails, walls). */
   constrain(head: THREE.Vector3): void
   waterY: number
+  /** Something to climb (a rigging net): is this world point within `reach` of it? */
+  climbable?(point: THREE.Vector3, reach: number): boolean
+  /** While climbing: how far to move the head (world) to stay close to the climbable surface. */
+  climbHold?(head: THREE.Vector3, target: THREE.Vector3): THREE.Vector3
+  /** Straight up the climbable surface (world, unit), for keyboard climbing. */
+  climbUp?(target: THREE.Vector3): THREE.Vector3
 }
 
 export type PlayerEnvironment = SwimEnvironment | WalkEnvironment

@@ -73,6 +73,9 @@ const codeInput = document.getElementById('crew-code') as HTMLInputElement
 const muteToggle = document.getElementById('opt-mute') as HTMLInputElement
 const classSelect = document.getElementById('opt-class') as HTMLSelectElement
 const spellMenuToggle = document.getElementById('opt-spellmenu') as HTMLInputElement
+declare const __BUILD_ID__: string
+document.getElementById('build-id')!.textContent = `Build ${__BUILD_ID__}`
+console.info(`Sunken Sicily build ${__BUILD_ID__}`)
 const ambienceSlider = document.getElementById('opt-ambience') as HTMLInputElement
 const hintsToggle = document.getElementById('opt-hints') as HTMLInputElement
 ambienceSlider.value = String(Math.round(settings.ambience * 100))

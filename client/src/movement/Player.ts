@@ -23,6 +23,9 @@ const SEATED_LIFT = 0.45
 // The local player: turns controller input into movement of the rig. On foot it walks, jumps and
 // follows the (possibly tilting, sinking) ground; underwater it swims. It also manages air,
 // respawn fades, jet bubbles and jet haptics.
+/** Keyboard climbing speed on the net (m/s). */
+const CLIMB_SPEED = 1.4
+
 export class Player {
   readonly physics = new SwimPhysics()
   air = new AirTank()
@@ -30,6 +33,10 @@ export class Player {
   refilling = false
   /** Set when a walking player drops into the water; the stage decides what happens. */
   inWater = false
+  /** On the rigging (gripping the net, or hanging on it): no gravity, no walking. */
+  climbing = false
+  /** A/X does something else here (climbing in or out of the nest): don't jump. */
+  noJump = false
   lastResult: SwimResult = { thrust: [], stroking: false, jetting: false }
   env: PlayerEnvironment | null = null
 
@@ -74,7 +81,7 @@ export class Player {
   enter(env: PlayerEnvironment, spawn: THREE.Vector3, yaw: number, bubbles: Bubbles | null = null): void {
     this.env = env
     // Every avatar in this stage (yours, the crew's, bots') keeps its body out of this ground.
-    avatarGround.at = env.kind === 'swim' ? (x, z) => env.floorHeight(x, z) : (x, z) => env.groundHeight(x, z)
+    avatarGround.at = env.kind === 'swim' ? (x, z) => env.floorHeight(x, z) : (x, z, below) => env.groundHeight(x, z, below)
     this.bubbles = bubbles
     this.checkpoint.copy(spawn)
     this.rig.position.copy(spawn)
@@ -135,6 +142,18 @@ export class Player {
 
   private updateWalk(dt: number, inXr: boolean, desktop: DesktopControls, env: WalkEnvironment): void {
     this.lastResult.thrust.fill(0)
+    const lift = this.seated ? SEATED_LIFT : 0
+
+    // Climbing: hands gripping the net pull you along (no gravity, no walking).
+    if (this.hands.some((h) => h.connected && h.anchor)) {
+      this.applyAnchors(dt)
+      this.verticalSpeed = 0
+      this.grounded = false
+      this.climbing = true
+      this.hugClimb(env, dt)
+      this.landOnGround(env, lift)
+      return
+    }
     this.camera.getWorldDirection(this.forward)
     this.forward.y = 0
     this.forward.normalize()
@@ -167,28 +186,67 @@ export class Player {
       x += Math.sin(this.clock * 0.9) * this.drunkDrift + Math.sin(this.clock * 2.3) * this.drunkDrift * 0.4
       y += Math.cos(this.clock * 0.7) * this.drunkDrift * 0.6
     }
+    // Hanging on the net (let go, or just climbed out of the nest): you stay put instead of falling.
+    this.rig.updateMatrixWorld(true)
+    const head = this.camera.getWorldPosition(this.head)
+    const underFeet = env.groundHeight(head.x, head.z, this.rig.position.y - lift + 0.3)
+    const aloft = underFeet === null || this.rig.position.y - lift > underFeet + 0.3
+    const onNet = !!env.climbable?.(head, 0.8)
+    const hanging = aloft && onNet && this.verticalSpeed <= 0.5
+    this.climbing = hanging
+    if (hanging) x = y = 0
+
     const speed = WALK_SPEED * this.drunkSpeed
     const vel = this.physics.velocity
     vel.copy(this.forward).multiplyScalar(-y * speed).addScaledVector(this.right, x * speed)
     this.rig.position.addScaledVector(vel, dt)
 
-    // Keep the head inside the walkable area (rails, cabin walls).
+    // Keyboard climbing: Space / Q go up and down the net while you're at it.
+    if (!inXr && onNet && env.climbUp && desktop.rise !== 0) {
+      this.rig.position.addScaledVector(env.climbUp(this.v1), desktop.rise * CLIMB_SPEED * dt)
+      this.verticalSpeed = 0
+      jump = false
+      this.climbing = true
+    }
+
+    if (this.climbing) this.hugClimb(env, dt)
+
+    // Keep the head inside the walkable area (rails, cabin walls, the nest's rim), unless on the net.
     this.rig.updateMatrixWorld(true)
-    const head = this.camera.getWorldPosition(this.head)
-    const before = this.v1.copy(head)
-    env.constrain(head)
-    this.rig.position.x += head.x - before.x
-    this.rig.position.z += head.z - before.z
+    this.camera.getWorldPosition(head)
+    if (!this.climbing) {
+      const before = this.v1.copy(head)
+      env.constrain(head)
+      this.rig.position.x += head.x - before.x
+      this.rig.position.z += head.z - before.z
+    }
 
     // Gravity and ground following. The rig stays upright even if the ground tilts (comfort).
-    if (jump && this.grounded) {
+    if (jump && this.grounded && !this.noJump) {
       this.verticalSpeed = JUMP_SPEED
       this.grounded = false
     }
-    this.verticalSpeed -= GRAVITY * dt
-    this.rig.position.y += this.verticalSpeed * dt
-    const lift = this.seated ? SEATED_LIFT : 0
-    const ground = env.groundHeight(head.x, head.z)
+    if (!this.climbing) {
+      this.verticalSpeed -= GRAVITY * dt
+      this.rig.position.y += this.verticalSpeed * dt
+    }
+    this.landOnGround(env, lift)
+    if (this.rig.position.y + 0.2 < env.waterY) this.inWater = true
+  }
+
+  /** On the net: ease toward it so you stay within reach as it leans. */
+  private hugClimb(env: WalkEnvironment, dt: number): void {
+    if (!env.climbHold) return
+    this.rig.updateMatrixWorld(true)
+    const offset = env.climbHold(this.camera.getWorldPosition(this.v1), this.v2)
+    this.rig.position.addScaledVector(offset, Math.min(1, 5 * dt))
+  }
+
+  /** Stand on whatever is underfoot (deck or nest floor), if the feet have reached it. */
+  private landOnGround(env: WalkEnvironment, lift: number): void {
+    this.rig.updateMatrixWorld(true)
+    const head = this.camera.getWorldPosition(this.head)
+    const ground = env.groundHeight(head.x, head.z, this.rig.position.y - lift + 0.3)
     if (ground !== null && this.rig.position.y <= ground + lift && this.verticalSpeed <= 0.5) {
       this.rig.position.y = ground + lift
       this.verticalSpeed = 0
@@ -196,7 +254,32 @@ export class Player {
     } else {
       this.grounded = false
     }
-    if (this.rig.position.y + 0.2 < env.waterY) this.inWater = true
+  }
+
+  /** Put your feet here (world), e.g. climbing into the crow's nest. Lets go of any handholds. */
+  placeFeet(feet: THREE.Vector3): void {
+    this.moveHeadOver(feet)
+    this.rig.position.y = feet.y + (this.seated ? SEATED_LIFT : 0)
+    this.verticalSpeed = 0
+    this.grounded = true
+  }
+
+  /** Put your head here (world), e.g. hanging at the top of the net. Lets go of any handholds. */
+  placeHead(head: THREE.Vector3): void {
+    this.moveHeadOver(head)
+    this.rig.updateMatrixWorld(true)
+    this.rig.position.y += head.y - this.camera.getWorldPosition(this.v1).y
+    this.verticalSpeed = 0
+    this.grounded = false
+  }
+
+  private moveHeadOver(point: THREE.Vector3): void {
+    for (const hand of this.hands) hand.anchor = null
+    this.physics.velocity.set(0, 0, 0)
+    this.rig.updateMatrixWorld(true)
+    const head = this.camera.getWorldPosition(this.v1)
+    this.rig.position.x += point.x - head.x
+    this.rig.position.z += point.z - head.z
   }
 
   // ---- Swimming -------------------------------------------------------------------------------

@@ -2,11 +2,17 @@ import * as THREE from 'three'
 import type { AudioSystem } from '../audio/AudioSystem'
 import type { Particles } from '../fx/Particles'
 import type { Hand } from '../input/Hand'
+import type { Interactable } from '../interaction/GrabSystem'
+import { Label } from '../ui/Label'
 import { DECK_Y, halfWidthAt, type Galleon } from '../world/ship/Galleon'
 
 const GRAVITY = 9.8
 const CLAY_HIT_RADIUS = 0.4
-const MAX_CLAYS = 4
+const MAX_CLAYS = 6
+/** A hand throw is too weak to fly far: speed it up (and keep it within a sporting range). */
+const HAND_THROW_BOOST = 2.6
+const HAND_THROW_MIN = 10
+const HAND_THROW_MAX = 19
 const BUTTON_COOLDOWN = 1.5
 
 interface Clay {
@@ -29,6 +35,8 @@ export interface ClayFx {
   audio: AudioSystem
   debris: Particles
   splash: Particles
+  /** A player threw a clay by hand (it's already flying here); in a crew, tell the others. */
+  onThrow?: (at: THREE.Vector3, velocity: THREE.Vector3, localId: number) => void
 }
 
 // Clay pigeon shooting off the stern: a thrower on the starboard rail with a big pull button,
@@ -39,6 +47,9 @@ export class ClayRange {
   private readonly clays: Clay[] = []
   private readonly thrower = new THREE.Group()
   private readonly button: THREE.Mesh
+  /** Grab a clay off the stack and throw it yourself. */
+  readonly stack: ClayStack
+  private readonly sign = new Label({ width: 0.7, canvasWidth: 600, canvasHeight: 300, billboard: true })
   private readonly boardCanvas = document.createElement('canvas')
   private readonly boardTexture: THREE.CanvasTexture
   private time = 0
@@ -69,8 +80,17 @@ export class ClayRange {
     stack.position.set(-0.12, 0.62, -0.15)
     this.thrower.add(base, arm, this.button, stack)
     ship.shake.add(this.thrower)
+    this.stack = new ClayStack(stack, this, clayGeometryFor())
+    this.sign.mesh.position.set(0, 1.55, 0)
+    this.thrower.add(this.sign.mesh)
+    this.sign.set([
+      { text: 'Clay Thrower', size: 40, bold: true, color: '#f2b64a' },
+      { text: 'Press the red button to launch', size: 28 },
+      { text: 'or grab a clay from the stack and throw it out to sea', size: 28 },
+      { text: 'for your crewmates to shoot', size: 24, color: '#b9c7cf' },
+    ])
 
-    const clayGeometry = new THREE.CylinderGeometry(0.11, 0.08, 0.03, 16)
+    const clayGeometry = clayGeometryFor()
     const clayMaterial = new THREE.MeshStandardMaterial({ color: 0xe0662c, roughness: 0.8 })
     for (let i = 0; i < MAX_CLAYS; i++) {
       const mesh = new THREE.Mesh(clayGeometry, clayMaterial)
@@ -104,6 +124,41 @@ export class ClayRange {
   /** Launch one or two clays (solo play). */
   pull(count: number): void {
     for (let i = 0; i < count; i++) this.launchSeeded(++this.localId, Math.floor(Math.random() * 2 ** 31), i * 0.3)
+  }
+
+  /** Keep the sign facing you. */
+  faceSign(camera: THREE.Camera): void {
+    this.sign.face(camera)
+  }
+
+  /** A clay thrown by hand leaves the hand here with this (already boosted) velocity. */
+  launchThrown(id: number, at: THREE.Vector3, velocity: THREE.Vector3): void {
+    const clay = this.clays.find((c) => !c.alive && c.pendingAt < 0)
+    if (!clay) return
+    clay.id = id
+    clay.alive = true
+    clay.mesh.visible = true
+    clay.mesh.position.copy(at)
+    clay.velocity.copy(velocity)
+  }
+
+  /** The server gave our hand-thrown clay its crew-wide id. */
+  renameClay(localId: number, id: number): void {
+    const clay = this.clays.find((c) => c.id === localId)
+    if (clay) clay.id = id
+  }
+
+  /** Called by the stack when a held clay is let go. */
+  throwFromHand(at: THREE.Vector3, handVelocity: THREE.Vector3): void {
+    if (handVelocity.length() < 1.2) return
+    const velocity = handVelocity.clone().multiplyScalar(HAND_THROW_BOOST)
+    velocity.setLength(THREE.MathUtils.clamp(velocity.length(), HAND_THROW_MIN, HAND_THROW_MAX))
+    // Always some lift, so a flat throw still sails.
+    velocity.y = Math.max(velocity.y, velocity.length() * 0.35)
+    const localId = -++this.localId
+    this.launchThrown(localId, at, velocity)
+    this.fx.audio.play('thud', at, 0.5)
+    this.fx.onThrow?.(at, velocity, localId)
   }
 
   /** Launch a clay the server announced: the seed gives every player the same flight. */
@@ -257,5 +312,60 @@ export class ClayRange {
       ctx.fillText(String(s.shots), 470, y)
     })
     this.boardTexture.needsUpdate = true
+  }
+}
+
+let sharedClayGeometry: THREE.BufferGeometry | null = null
+function clayGeometryFor(): THREE.BufferGeometry {
+  sharedClayGeometry ??= new THREE.CylinderGeometry(0.11, 0.08, 0.03, 16)
+  return sharedClayGeometry
+}
+
+// The stack of clays on the thrower: grip it to take one, then throw it (let go mid-swing).
+export class ClayStack implements Interactable {
+  private held: THREE.Mesh | null = null
+  private holder: Hand | null = null
+  private readonly home: THREE.Vector3
+  private readonly v = new THREE.Vector3()
+
+  constructor(
+    readonly object: THREE.Mesh,
+    private readonly range: ClayRange,
+    geometry: THREE.BufferGeometry,
+  ) {
+    this.home = object.position.clone()
+    this.held = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0xe0662c, roughness: 0.8 }))
+    this.held.visible = false
+  }
+
+  grabGap(point: THREE.Vector3, hand: Hand): number {
+    if (this.holder === hand) return Infinity
+    return point.distanceTo(this.object.getWorldPosition(this.v)) - 0.16
+  }
+
+  grab(hand: Hand): void {
+    // If it was pulled from a distance, the stack goes back on the thrower; you keep one clay.
+    this.object.position.copy(this.home)
+    this.holder = hand
+    const clay = this.held!
+    hand.grip.add(clay)
+    clay.position.set(0, -0.01, -0.06)
+    clay.rotation.set(0, 0, 0)
+    clay.visible = true
+    hand.pulse(0.25, 25)
+  }
+
+  release(hand: Hand, throwVelocity: THREE.Vector3): void {
+    if (hand !== this.holder) return
+    this.holder = null
+    const clay = this.held!
+    const at = clay.getWorldPosition(new THREE.Vector3())
+    clay.visible = false
+    clay.removeFromParent()
+    this.range.throwFromHand(at, throwVelocity)
+  }
+
+  setHighlight(on: boolean): void {
+    ;(this.object.material as THREE.MeshStandardMaterial).emissive.setHex(on ? 0x2e7896 : 0x000000)
   }
 }

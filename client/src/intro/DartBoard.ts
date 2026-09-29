@@ -17,6 +17,13 @@ const GRAVITY = 9.8
 /** VR throws tend to feel weak without a small boost. */
 const THROW_BOOST = 1.15
 const DESKTOP_THROW_SPEED = 7
+/** Sight-aimed throws fly at the throw's speed, kept within these (m/s). */
+const AIMED_MIN_SPEED = 6.5
+const AIMED_MAX_SPEED = 11
+/** Everyone's aim wobbles a little (degrees), so it's still a game. */
+const BASE_SCATTER = 0.7
+/** The aiming dot shows when you're this close to the board. */
+const AIM_RANGE = 4.5
 const RETURN_DELAY = 1.6
 const MODES: DartsMode[] = ['301', '501', 'clock']
 
@@ -51,6 +58,12 @@ export class DartBoardArea {
   /** How-to sign over the rack; the step you're on lights up. */
   private readonly sign = new Label({ width: 0.8, canvasWidth: 640, canvasHeight: 440, billboard: true })
   private readonly rackObject = new THREE.Group()
+  /** Red aiming light on the board: where a held dart will land. */
+  private readonly aimDot: THREE.Mesh
+  /** The viewer's eye (set every frame), for sight-line aiming. */
+  camera: THREE.Camera | null = null
+  private readonly v2a = new THREE.Vector2()
+  private readonly v2b = new THREE.Vector2()
 
   constructor(
     readonly root: THREE.Group,
@@ -70,6 +83,13 @@ export class DartBoardArea {
     back.rotation.x = Math.PI / 2
     this.board.add(back, face)
     ship.shake.add(this.board)
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(0.03, 20), new THREE.MeshBasicMaterial({ color: 0xff3b2f, transparent: true, opacity: 0.45, depthWrite: false, fog: false }))
+    this.aimDot = new THREE.Mesh(new THREE.CircleGeometry(0.012, 16), new THREE.MeshBasicMaterial({ color: 0xff2a1f, depthWrite: false, fog: false }))
+    this.aimDot.add(glow)
+    glow.position.z = -0.001
+    this.aimDot.visible = false
+    this.aimDot.renderOrder = 20
+    this.board.add(this.aimDot)
 
     // Slate scoreboard beside the board.
     this.slateCanvas.width = 512
@@ -165,8 +185,44 @@ export class DartBoardArea {
     this.boardFall = new THREE.Vector3(0, 0, 0)
   }
 
+  /**
+   * Where a dart at `from` is aimed: the line from your eye through the dart, onto the board or the
+   * wall around it (board-local x, y), or null when it isn't pointed at the wall.
+   */
+  aimAt(from: THREE.Vector3, target: THREE.Vector2): boolean {
+    if (!this.camera || this.interrupted) return false
+    const eye = this.camera.getWorldPosition(new THREE.Vector3())
+    this.board.updateMatrixWorld()
+    const a = this.board.worldToLocal(eye.clone())
+    if (a.z > AIM_RANGE || a.z < 0.3) return false
+    // Where the dart lines up from your eye...
+    const b = this.board.worldToLocal(from.clone())
+    const sight = hitBoard(a, b, this.v2a)
+    // ...and where you're looking. Half of each: steady enough to aim, but your hand still steers it.
+    const gazeEnd = eye.add(this.camera.getWorldDirection(new THREE.Vector3()))
+    const gaze = hitBoard(a, this.board.worldToLocal(gazeEnd), this.v2b)
+    if (!sight || !gaze) return false
+    target.copy(sight).lerp(gaze, 0.5)
+    return Math.abs(target.x) < 1.5 && target.y > -1.4 && target.y < 0.8
+  }
+
+  /** Show or hide the aiming light (board-local point). It glides a little so it doesn't jitter. */
+  showAim(point: THREE.Vector2 | null): void {
+    const wasVisible = this.aimDot.visible
+    this.aimDot.visible = point !== null
+    if (!point) return
+    if (!wasVisible) this.aimDot.position.set(point.x, point.y, 0.03)
+    else this.aimDot.position.lerp(this.v.set(point.x, point.y, 0.03), 0.35)
+    // Throws go where the dot is.
+    point.set(this.aimDot.position.x, this.aimDot.position.y)
+  }
+
   update(dt: number, hands: Hand[], camera?: THREE.Camera): void {
-    if (camera) this.updateSign(camera)
+    if (camera) {
+      this.camera = camera
+      this.updateSign(camera)
+    }
+    if (!this.darts.some((d) => d.state === 'held')) this.showAim(null)
     this.buttonCooldown = Math.max(0, this.buttonCooldown - dt)
     if (!this.interrupted) {
       for (const b of this.buttons) {
@@ -215,7 +271,7 @@ export class DartBoardArea {
       { text: 'Darts', size: 44, bold: true, color: '#f2b64a' },
       line(0, '1. Grip a dart (or point at one and grip)'),
       line(1, '2. Stand behind the white line'),
-      line(2, '3. Aim, swing your arm forward and let go of grip to throw'),
+      line(2, '3. Raise the dart in front of your eye: the red dot shows where it will land. Let go of grip (or pull the trigger) to throw'),
       { text: 'Blue button: game  ·  Red button: double out (touch them)', size: 22, color: '#9fb2bb' },
     ])
     this.sign.face(camera)
@@ -292,6 +348,14 @@ export class DartBoardArea {
   }
 }
 
+/** Where a line through a and b (board-local) crosses the board face, or null if it points away. */
+function hitBoard(a: THREE.Vector3, b: THREE.Vector3, target: THREE.Vector2): THREE.Vector2 | null {
+  const dz = b.z - a.z
+  if (dz > -0.01) return null
+  const t = (0.03 - a.z) / dz
+  return target.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
+}
+
 class Dart implements Interactable {
   readonly object = new THREE.Group()
   state: DartState = 'rack'
@@ -300,6 +364,12 @@ class Dart implements Interactable {
   private readonly rack: THREE.Object3D
   private readonly slot: THREE.Vector3
   private thrower: Hand | null = null
+  private holder: Hand | null = null
+  /** Fastest the hand moved in the last moments of holding (m/s): the throw's strength. */
+  private peakSpeed = 0
+  private peakAge = 0
+  private aimed = false
+  private readonly aim = new THREE.Vector2()
   private scored = false
   private downTimer = 0
   private readonly prevLocal = new THREE.Vector3()
@@ -346,18 +416,62 @@ class Dart implements Interactable {
 
   grab(hand: Hand): void {
     this.state = 'held'
+    this.holder = hand
+    this.peakSpeed = 0
     hand.ray.add(this.object)
     this.object.position.set(0, 0, -0.02)
     this.object.quaternion.identity()
     hand.pulse(0.15, 15)
   }
 
+  /** Held: point away from your eye, light up the aim, and throw on the trigger. */
+  private hold(dt: number): void {
+    const hand = this.holder
+    if (!hand) return
+    // Remember the fastest recent hand speed (a flick's peak comes just before the release).
+    this.peakAge += dt
+    const speed = hand.localVel.length()
+    if (speed >= this.peakSpeed || this.peakAge > 0.25) {
+      this.peakSpeed = speed
+      this.peakAge = 0
+    }
+    if (hand.virtual) return
+    const from = this.object.getWorldPosition(this.v)
+    this.aimed = this.area.aimAt(from, this.aim)
+    this.area.showAim(this.aimed ? this.aim : null)
+    // Point the dart along your line of sight (tip away from you), whatever the controller's angle.
+    const eye = this.area.camera?.getWorldPosition(new THREE.Vector3())
+    if (eye) {
+      const dir = from.clone().sub(eye).normalize()
+      const world = new THREE.Quaternion().setFromUnitVectors(this.forward, dir)
+      const parent = this.object.parent!.getWorldQuaternion(this.q)
+      this.object.quaternion.copy(parent.invert().multiply(world))
+    }
+    if (hand.triggerPressed) {
+      hand.held = null
+      this.release(hand, new THREE.Vector3())
+    }
+  }
+
   release(hand: Hand, throwVelocity: THREE.Vector3): void {
     if (this.state !== 'held') return
     this.area.root.attach(this.object)
     this.thrower = hand
+    this.holder = null
     this.scored = false
-    if (hand.virtual) {
+    if (!hand.virtual && this.aimed) {
+      // Sight-aimed: fly to the red dot, as hard as you threw (within limits).
+      const target = this.area.board.localToWorld(new THREE.Vector3(this.aim.x, this.aim.y, 0.02))
+      const from = this.object.getWorldPosition(this.v)
+      const speed = THREE.MathUtils.clamp(this.peakSpeed * THROW_BOOST * 1.4, AIMED_MIN_SPEED, AIMED_MAX_SPEED)
+      const flight = from.distanceTo(target) / speed
+      this.velocity.subVectors(target, from).divideScalar(flight)
+      this.velocity.y += 0.5 * GRAVITY * flight
+      const wobble = THREE.MathUtils.degToRad(BASE_SCATTER)
+      const axis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize()
+      this.velocity.applyAxisAngle(axis, (Math.random() - 0.5) * 2 * wobble)
+      this.area.showAim(null)
+    } else if (hand.virtual) {
       // Desktop: lob it at whatever you're looking at, about oche distance away.
       const eye = hand.ray.parent!
       const target = eye.getWorldPosition(new THREE.Vector3()).addScaledVector(eye.getWorldDirection(new THREE.Vector3()), THROW_DISTANCE)
@@ -405,7 +519,8 @@ class Dart implements Interactable {
   }
 
   update(dt: number): void {
-    if (this.state === 'flying') this.fly(dt)
+    if (this.state === 'held') this.hold(dt)
+    else if (this.state === 'flying') this.fly(dt)
     else if (this.state === 'falling') this.fall(dt)
     else if (this.state === 'down' && !this.area.interrupted) {
       // Fallen darts respawn in the rack; once the attack starts they stay where they fell.

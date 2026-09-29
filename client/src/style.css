@@ -37,3 +37,4 @@ body.in-xr .hud-dom, body.in-xr .dive-dom { display: none; }
 .legend-dom { position: fixed; left: 12px; bottom: 12px; max-width: 46%; padding: 6px 10px; border-radius: 8px; background: rgba(0,0,0,0.55); font: 13px/1.4 system-ui, sans-serif; pointer-events: none; }
 body.in-xr .legend-dom { display: none; }
 @media (max-width: 600px) { .legend-dom { display: none; } }
+.build-id { margin: -6px 0 8px; font: 12px/1.3 ui-monospace, monospace; opacity: 0.6; }

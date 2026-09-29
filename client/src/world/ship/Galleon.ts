@@ -25,6 +25,10 @@ export const STERN_Z = 13
 export const BOW_Z = -14.5
 /** The captain's cabin occupies the stern from here back. */
 export const CABIN_FRONT_Z = 9.6
+/** The main mast's crow's nest: its floor (ship-local y) and radius. Mast heights × this = nest floor. */
+const NEST_HEIGHT = 0.525
+export const NEST_FLOOR_Y = DECK_Y + 16 * NEST_HEIGHT
+export const NEST_RADIUS = 1.0
 const HULL_DEPTH = 4
 
 /** Axis-aligned box in ship-local space, for collisions. */
@@ -97,6 +101,8 @@ export class Galleon {
   /** Muzzle points (ship-local) of the starboard and port cannons. */
   readonly starboardGuns: THREE.Vector3[] = []
   readonly portGuns: THREE.Vector3[] = []
+  /** Every deck cannon (ship-local): touch hole at the breech, muzzle, and which side it fires to. */
+  readonly cannons: { touchHole: THREE.Vector3; muzzle: THREE.Vector3; side: 1 | -1 }[] = []
   private readonly flag: THREE.Mesh
   private readonly flagTextures = new Map<FlagKind, THREE.Texture>()
 
@@ -127,7 +133,10 @@ export class Galleon {
         cannon.position.set(x, DECK_Y, z)
         cannon.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2
         structure.add(cannon)
-        ;(side > 0 ? this.starboardGuns : this.portGuns).push(new THREE.Vector3(side * (halfWidthAt(z) + 0.6), DECK_Y + 0.55, z))
+        const muzzle = new THREE.Vector3(side * (halfWidthAt(z) + 0.6), DECK_Y + 0.55, z)
+        ;(side > 0 ? this.starboardGuns : this.portGuns).push(muzzle)
+        // The barrel's breech end is 0.4 m inboard of the carriage centre; the touch hole sits on top.
+        this.cannons.push({ touchHole: new THREE.Vector3(x - side * 0.3, DECK_Y + 0.69, z), muzzle: muzzle.clone(), side: side as 1 | -1 })
       }
     }
 
@@ -190,9 +199,20 @@ export class Galleon {
       mast.add(sail)
       this.hitMeshes.push(sail)
     }
-    const crow = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.45, 0.35, 10, 1, true), wood)
-    crow.position.y = height * 0.65
-    mast.add(crow)
+    // Crow's nest: a floor and a waist-high rim, above the lower yard and below the upper sail.
+    const r = NEST_RADIUS * (height / 16)
+    const floorY = height * NEST_HEIGHT
+    // Double-sided so the rim's inside shows when you're standing in it.
+    const inside = (wood as THREE.MeshStandardMaterial).clone()
+    inside.side = THREE.DoubleSide
+    const tub = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.92, 1.0, 16, 1, true), inside)
+    tub.position.y = floorY + 0.45
+    const floor = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.94, r * 0.9, 0.08, 16), wood)
+    floor.position.y = floorY - 0.04
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(r, 0.05, 6, 20), wood)
+    rim.rotation.x = Math.PI / 2
+    rim.position.y = floorY + 0.95
+    mast.add(tub, floor, rim)
   }
 }
 

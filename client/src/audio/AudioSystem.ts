@@ -15,7 +15,7 @@ export class AudioSystem {
   private environment: AudioEnvironment = 'air'
   private duck = 1
   /** Player's background-sound setting, 0–1. */
-  private ambience = 0.5
+  private ambience = 0.3
   private duckTimer = 0
   private started = false
 
@@ -130,7 +130,7 @@ export class AudioSystem {
 
   private applyLevels(): void {
     // Well under the effects and voices; the slider scales it from silent to this.
-    this.waves?.setVolume(this.environment === 'air' ? 0.12 * this.ambience * this.duck : 0)
-    this.underwater?.setVolume(this.environment === 'water' ? 0.1 * this.ambience * this.duck : 0)
+    this.waves?.setVolume(this.environment === 'air' ? 0.08 * this.ambience * this.duck : 0)
+    this.underwater?.setVolume(this.environment === 'water' ? 0.06 * this.ambience * this.duck : 0)
   }
 }

@@ -58,6 +58,25 @@ assert.equal((alice.state as any).claims.get('gun0'), undefined)
 assert.equal(b.released.length, 1)
 console.log('claims: first grab wins, release broadcast')
 
+// Hand-thrown clays get a crew-wide id and reach everyone; cannon shots reach everyone else.
+const thrown: { a: any[]; b: any[] } = { a: [], b: [] }
+const cannons: { a: any[]; b: any[] } = { a: [], b: [] }
+alice.onMessage('clayThrown', (m) => thrown.a.push(m))
+bob.onMessage('clayThrown', (m) => thrown.b.push(m))
+alice.onMessage('cannon', (m) => cannons.a.push(m))
+bob.onMessage('cannon', (m) => cannons.b.push(m))
+alice.send('throwClay', { at: [1, 3, 6], vel: [8, 6, 0], local: -1 })
+alice.send('throwClay', { at: [1, 3], vel: [8, 6, 0], local: -2 })
+alice.send('cannon', { i: 2 })
+await wait(300)
+assert.equal(thrown.a.length, 1, 'bad throw ignored')
+assert.equal(thrown.b[0].id, thrown.a[0].id)
+assert.equal(thrown.a[0].local, -1)
+assert.deepEqual(thrown.b[0].vel, [8, 6, 0])
+assert.equal(cannons.a.length, 0, 'the firer does not get their own shot back')
+assert.equal(cannons.b[0].i, 2)
+console.log('hand-thrown clay and cannon fire relayed')
+
 // Collectibles count once.
 alice.send('collect', { id: 'coin3', points: 10 })
 bob.send('collect', { id: 'coin3', points: 10 })

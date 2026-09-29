@@ -32,7 +32,7 @@ const MAX_COS_LEAN = Math.cos(SWIM_LEAN)
  * Ground under a point in the current stage (deck, beach or seabed), or null over open water.
  * Set by the player when a stage starts, and used to keep every avatar's body out of the floor.
  */
-export const avatarGround: { at: ((x: number, z: number) => number | null) | null } = { at: null }
+export const avatarGround: { at: ((x: number, z: number, below?: number) => number | null) | null } = { at: null }
 
 export class Avatar {
   readonly group = new THREE.Group()
@@ -145,7 +145,7 @@ export class Avatar {
     const head = this.head.position
     this.body.position.copy(head)
     const e = new THREE.Euler().setFromQuaternion(this.head.quaternion, 'YXZ')
-    const floor = avatarGround.at?.(head.x, head.z) ?? null
+    const floor = avatarGround.at?.(head.x, head.z, head.y - 0.2) ?? null
     const drop = floor === null ? BODY_LENGTH : head.y - floor
     let lean = 0
     let stretch = 1
