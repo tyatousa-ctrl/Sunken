@@ -262,6 +262,11 @@ export class Level3Stage extends DiveLevel {
     return null
   }
 
+  protected onProp(key: string, v: number[]): void {
+    const i = /^shell(\d)$/.exec(key)?.[1]
+    if (i !== undefined) this.shells.shells[Number(i)]?.turnTo(v[0])
+  }
+
   protected levelInk(): string[] {
     return ['Hidden ink: a gem behind the smugglers\' crates, one in a dark nook deep in the grotto\'s pool, and one at the cliff\'s foot east of the arch.']
   }
@@ -273,6 +278,8 @@ export class Level3Stage extends DiveLevel {
     this.shells = new LightShells(this.root, { source: BEAM_SOURCE, shells: SHELL_SPOTS, target: CARVING }, game.audio)
     for (const shell of this.shells.shells) this.grab.add(shell)
     this.shells.onLit = () => this.step('lightCarving')
+    // Turning a shell turns it for the whole crew.
+    this.shells.shells.forEach((shell, i) => (shell.onTurn = (yaw) => this.shareProp(`shell${i}`, [yaw])))
 
     const heavy = this.grab.add(new TooHeavy(this.boulder, BOULDER_RADIUS + 0.2, () => this.boulderT < 0))
     heavy.onTry = () =>
@@ -413,8 +420,8 @@ export class Level3Stage extends DiveLevel {
         game.hud.now(who ? `${who} lit the carving!` : 'The carving blazes blue! A stone slides aside beside it...', 4)
         game.hud.say(
           game.party.character === 'navigator'
-            ? 'You read the old words in the carving: "Take the map, then roll the great stone from the north door; the way lies below."'
-            : 'The carving shows a sun above the waves, and an arrow pointing down to a great stone at the grotto\'s north end.',
+            ? 'You read the old words in the carving: "What the light shows, take. Our way out lies deep, behind strength."'
+            : 'The carving shows a sun above the waves, and something round and heavy beneath them.',
           6,
         )
       }

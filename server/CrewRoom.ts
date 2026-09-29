@@ -12,6 +12,7 @@ const LEVELS = new Map<string, LevelData>(
 )
 const POSE_LENGTH = 21
 const PULL_COOLDOWN_MS = 1000
+const MAX_PROPS = 200
 const MAX_POINTS = 50
 
 // One crew of up to four. The server decides everything shared: who shot the ship first, clay
@@ -27,6 +28,8 @@ export class CrewRoom extends Room<{ state: CrewState }> {
   private readonly botPoses = new Map<string, PoseMessage>()
   /** Riddle progress per level, created when a level's first step is taken. */
   private readonly progress = new Map<string, LevelProgress>()
+  /** Shared puzzle props (e.g. "level3/shell0" → its angle): latest value, for everyone and late joiners. */
+  private readonly props = new Map<string, number[]>()
   private clayId = 0
   private crackerId = 0
   private lastPull = 0
@@ -193,6 +196,21 @@ export class CrewRoom extends Room<{ state: CrewState }> {
       this.state.steps.push(`${data.id}:${msg.step}`)
       this.broadcast('step', { level: data.id, step: msg.step, by: client.sessionId })
       if (progress.solved) this.state.mapPieces.push(data.reward.mapPiece)
+    })
+
+    // Puzzle pieces someone moved (a shell turned): pass it on, and remember it for anyone arriving later.
+    this.onMessage('prop', (client, msg: { key?: string; v?: number[] }) => {
+      const key = typeof msg?.key === 'string' ? msg.key.slice(0, 48) : ''
+      const v = Array.isArray(msg?.v) ? msg.v.slice(0, 8).map(Number) : []
+      if (!key || v.length === 0 || v.some((n) => !Number.isFinite(n))) return
+      if (!this.props.has(key) && this.props.size >= MAX_PROPS) return
+      this.props.set(key, v)
+      this.broadcast('prop', { key, v, by: client.sessionId }, { except: client })
+    })
+    // A level starting on someone's device asks where its pieces are.
+    this.onMessage('props', (client, msg: { prefix?: string }) => {
+      const prefix = typeof msg?.prefix === 'string' ? msg.prefix : ''
+      for (const [key, v] of this.props) if (key.startsWith(prefix)) client.send('prop', { key, v, by: '' })
     })
 
     // WebRTC voice signalling, relayed to one player.

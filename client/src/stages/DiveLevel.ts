@@ -14,7 +14,7 @@ import { SKILLS, SkillCooldown } from '../systems/skills'
 import type { CharacterClass } from '../systems/crew'
 import type { SpellShape } from '../systems/gesture'
 import { Magic } from '../magic/Magic'
-import { FishSchool, NavigatorTrail } from '../skills/effects'
+import { FishSchool } from '../skills/effects'
 import { Particles } from '../fx/Particles'
 import { TUNING } from '../movement/tuning'
 import type { BotTask, BotWorld } from '../bots/world'
@@ -68,7 +68,6 @@ export abstract class DiveLevel implements Stage {
   protected skill!: SkillCooldown
   protected env!: SwimEnvironment
   protected magic!: Magic
-  protected trail!: NavigatorTrail
   protected fish!: FishSchool
   protected grab!: GrabSystem
   protected gate!: ExitGate
@@ -103,7 +102,7 @@ export abstract class DiveLevel implements Stage {
   protected abstract updateLevel(dt: number, elapsed: number): void
   /** A riddle step happened (`who`: a crewmate's name if they did it). Update the world to match. */
   protected abstract applyLevelStep(id: string, who: string | null, byOther: boolean): void
-  /** Where the compass (and the Navigator's trail) points: whatever the next step needs. */
+  /** Where the compass points: whatever the next step needs. */
   protected abstract objective(): THREE.Vector3
   /** What comes after this level (null: not built yet). */
   protected abstract nextStage(): (() => Stage) | null
@@ -118,7 +117,7 @@ export abstract class DiveLevel implements Stage {
   protected levelInk(): string[] {
     return []
   }
-  /** Waypoints for bots and the Navigator's trail (default: straight there). */
+  /** Waypoints for bots (default: straight there). */
   protected route(_from: THREE.Vector3, to: THREE.Vector3): THREE.Vector3[] {
     return [to]
   }
@@ -141,7 +140,6 @@ export abstract class DiveLevel implements Stage {
     const cls = game.party.character
     this.skill = new SkillCooldown(SKILLS[cls].cooldown)
     game.player.setAirCapacity(cls === 'deepDiver' ? TUNING.airCapacity * 2 : TUNING.airCapacity)
-    this.trail = new NavigatorTrail(this.glow)
     this.fish = new FishSchool(this.root)
 
     const setup = (this.setup = this.buildWorld())
@@ -198,8 +196,8 @@ export abstract class DiveLevel implements Stage {
 
   guide(): ButtonGuide {
     return {
-      left: ['Grip + pull: swim', 'Trigger: bubble jet', 'X: backpack', 'Y: magic', 'Stick: drift · click: map'],
-      right: ['Grip + pull: swim', 'Trigger: bubble jet', 'A: backpack', 'B: class skill', 'Stick: turn · rise / sink'],
+      left: ['Grip + pull: swim', 'Trigger: bubble jet', 'X: backpack · put away', 'Y: magic', 'Stick: drift · click: map'],
+      right: ['Grip + pull: swim', 'Trigger: bubble jet', 'A: backpack · put away', 'B: class skill', 'Stick: turn · rise / sink'],
       desktop: [
         '<b>Diving</b>',
         'WASD: swim · Space / Q: rise / sink · Shift: jets',
@@ -251,8 +249,13 @@ export abstract class DiveLevel implements Stage {
   private handleButtons(): void {
     for (const hand of this.game.hands) {
       if (!hand.connected) continue
-      // A/X: backpack. Reaching over the shoulder and gripping (empty-handed) also opens it.
-      if (hand.primaryPressed) this.openBackpack(hand)
+      // A/X: put away what's in this hand (or close the map); otherwise the backpack. Reaching over
+      // the shoulder and gripping (empty-handed) also opens it.
+      if (hand.primaryPressed && this.map.isOpen) this.map.close()
+      else if (hand.primaryPressed && this.backpack.holds(hand.held)) {
+        this.backpack.stow(hand.held)
+        this.grab.drop(hand)
+      } else if (hand.primaryPressed) this.openBackpack(hand)
       else if (hand.squeezePressed && !hand.held && !this.backpack.isOpen && this.backpack.overShoulder(hand)) {
         hand.squeezePressed = false
         this.openBackpack(hand)
@@ -277,10 +280,14 @@ export abstract class DiveLevel implements Stage {
         game.hud.now('Nothing heavy to lift here.', 2)
         return
       case 'navigator': {
+        // Reading the map's hidden ink: the next hint now, instead of waiting. Hints nudge; they
+        // never give the answer away.
+        if (this.progress.solved || this.progress.hintsUnlocked >= this.level.hints.length) {
+          return void game.hud.now('No more hidden ink to read. Work it out with your crew!', 3)
+        }
         if (!this.skill.trigger()) return this.spent()
-        this.trail.show(this.route(game.camera.getWorldPosition(new THREE.Vector3()), this.objective()))
-        this.refreshMap()
-        game.hud.now('Hidden ink glows on your map, and a trail lights the way to the next clue.', 4)
+        const hint = this.progress.revealHint()
+        if (hint) this.onProgress([hint])
         return
       }
       case 'deepDiver': {
@@ -325,7 +332,6 @@ export abstract class DiveLevel implements Stage {
     const head = game.camera.getWorldPosition(new THREE.Vector3())
     // Currents carry the diver along.
     game.player.physics.velocity.addScaledVector(this.magic.flowAt(head, game.player.physics.velocity), dt)
-    this.trail.update(dt, head, () => this.route(head, this.objective()))
     this.fish.update(dt, head)
   }
 
@@ -338,7 +344,7 @@ export abstract class DiveLevel implements Stage {
     this.map.toggle(hand)
     if (this.map.isOpen && !this.taught.has('map')) {
       this.teach('map', `The riddle on your map: "${this.level.riddle}"`, 8)
-      this.game.hud.say('Turn the map over for notes. Grip it with your other hand and pull to zoom.', 5)
+      this.game.hud.say('Turn the map over for notes. Grip it with your other hand and pull to zoom. A or X puts it away.', 5)
     }
   }
 
@@ -429,6 +435,14 @@ export abstract class DiveLevel implements Stage {
 
   // ---- Crew play ---------------------------------------------------------------------------------
 
+  /** Tell the crew a puzzle piece moved (a shell turned), so it moves on every screen. */
+  protected shareProp(key: string, v: number[]): void {
+    this.game.net?.send('prop', { key: `${this.level.id}/${key}`, v })
+  }
+
+  /** A crewmate moved a puzzle piece (or we joined and are catching up). */
+  protected onProp(_key: string, _v: number[]): void {}
+
   private connectNet(): void {
     const net = this.game.net
     if (!net) return
@@ -448,6 +462,12 @@ export abstract class DiveLevel implements Stage {
       c.item.object.visible = false
       if (msg.by === net.sessionId) this.gain(c.kind, c.item)
     })
+    // Puzzle pieces a crewmate moved; then ask where everything already is.
+    const propPrefix = `${this.level.id}/`
+    on<{ key: string; v: number[] }>('prop', (msg) => {
+      if (msg.key.startsWith(propPrefix)) this.onProp(msg.key.slice(propPrefix.length), msg.v)
+    })
+    net.send('props', { prefix: propPrefix })
     // Catch up on everything the crew already did here before we arrived.
     this.catchingUp = true
     const prefix = `${this.level.id}:`

@@ -68,6 +68,14 @@ export class LevelProgress {
     return events
   }
 
+  /** Unlock the next hint now (the Navigator reading the map's hidden ink); null if all are out. */
+  revealHint(): ProgressEvent | null {
+    if (this.solved || this.hintsUnlocked >= this.data.hints.length) return null
+    this.sinceHint = 0
+    const tier = this.hintsUnlocked++
+    return { type: 'hint', tier: tier + 1, text: this.data.hints[tier] }
+  }
+
   update(dt: number): ProgressEvent | null {
     if (this.solved) return null
     this.sinceProgress += dt

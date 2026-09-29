@@ -39,6 +39,8 @@ export class Backpack implements Interactable {
   /** Stored items that have a model we can hand back (keys, map pieces...). */
   private readonly stored = new Map<ItemKind, LooseItem[]>()
   private readonly kinds = new Map<LooseItem, ItemKind>()
+  /** Taken out of the bag and not yet used: letting go of these anywhere puts them back. */
+  private readonly handedOut = new Set<LooseItem>()
   private readonly v = new THREE.Vector3()
   private readonly head = new THREE.Vector3()
   private readonly fwd = new THREE.Vector3()
@@ -113,11 +115,12 @@ export class Backpack implements Interactable {
     const kind = this.kinds.get(item)
     if (!kind) return false
     const overGrid = this.isOpen && this.cellAt(hand.worldPos(this.v)) >= 0
-    if (!overGrid && !this.overShoulder(hand)) return false
+    if (!overGrid && !this.overShoulder(hand) && !this.handedOut.has(item)) return false
     if (this.ctx.inventory.add(kind) < 0) {
       this.ctx.audio.play('click', undefined, 0.5)
       return false
     }
+    this.handedOut.delete(item)
     item.enabled = false
     item.object.visible = false
     const list = this.stored.get(kind) ?? []
@@ -127,6 +130,21 @@ export class Backpack implements Interactable {
     this.redraw()
     this.ctx.onChange()
     return true
+  }
+
+  /** Is this something the backpack can hold? */
+  holds(item: unknown): item is LooseItem {
+    return this.kinds.has(item as LooseItem)
+  }
+
+  /** A/X while holding it: straight into the bag, wherever your hand is. */
+  stow(item: LooseItem): void {
+    this.handedOut.add(item)
+  }
+
+  /** It was used up (a key turned in its lock): letting go of it no longer puts it back. */
+  forget(item: LooseItem): void {
+    this.handedOut.delete(item)
   }
 
   /** Items picked up straight into the bag (coins, gems). */
@@ -169,6 +187,7 @@ export class Backpack implements Interactable {
     this.ctx.itemParent.add(item.object)
     item.object.position.copy(hand.worldPos(this.v))
     hand.held = item
+    this.handedOut.add(item)
     item.grab(hand)
     this.redraw()
     this.ctx.onChange()

@@ -17,9 +17,9 @@
     }
   ],
   "hints": [
-    "The stars that live below aren't in the sky: they're starfish, on the sand, in the seagrass and on the rocks. Touch one and it glows, so you know you've counted it.",
-    "The door of stone is set into the reef to the north. Its lock is the carved stone dial beside it: grip its rim and turn it.",
-    "There are seven starfish. The last one sits on top of the tall rock pillar in the west, where the current pulls you down; the Fish Whisperer can ride the turtle up there. Turn the dial to 7."
+    "Stars below the waves don't shine in the sky. Look on the sand, in the seagrass and on the rocks. Touch one and it glows, so you know it's counted.",
+    "A door of stone is set into the reef somewhere to the north. Look at what's carved beside it.",
+    "Have you counted them all? One star lives where the current won't let you swim up. A friend of the Fish Whisperer might carry you there."
   ],
   "reward": {
     "mapPiece": 3,

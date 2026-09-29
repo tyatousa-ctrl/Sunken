@@ -102,7 +102,12 @@ export class LightShells {
       const angle = Math.abs(Math.atan2(out.x, out.z) - Math.atan2(want.x, want.z))
       const off = THREE.MathUtils.radToDeg(Math.min(angle, Math.PI * 2 - angle))
       if (off > AIM_TOLERANCE) {
-        end = at.clone().addScaledVector(out.setY(0).normalize(), MISS_LENGTH)
+        // Off target: the light carries on past the next shell's height (sloping as the way to it
+        // would), so you can see how close it came.
+        const run = Math.hypot(want.x, want.z)
+        const length = Math.max(MISS_LENGTH, run * 1.4)
+        const flat = out.setY(0).normalize()
+        end = at.clone().add(new THREE.Vector3(flat.x * length, run > 1e-3 ? (want.y / run) * length : 0, flat.z * length))
         break
       }
       dir = want.normalize()
@@ -137,6 +142,11 @@ export class Shell implements Interactable {
   private readonly mirror = new THREE.Group()
   private yaw: number
   private readonly holds = new Map<Hand, { handAngle: number; yaw: number }>()
+  /** Turned by a crewmate: ease to this angle. */
+  private remoteYaw: number | null = null
+  private sendTimer = 0
+  /** This shell was turned here (while turning, and where it came to rest): tell the crew. */
+  onTurn: (yaw: number) => void = () => {}
   private readonly nacre: THREE.MeshStandardMaterial
   private readonly v = new THREE.Vector3()
   private tick = 0
@@ -197,6 +207,7 @@ export class Shell implements Interactable {
   }
 
   grab(hand: Hand): void {
+    this.remoteYaw = null
     this.holds.set(hand, { handAngle: this.handAngle(hand), yaw: this.yaw })
     hand.pulse(0.3, 30)
   }
@@ -211,15 +222,37 @@ export class Shell implements Interactable {
       hand.pulse(0.5, 60)
       this.audio.play('thud', this.at, 0.5)
     }
+    this.onTurn(this.yaw)
+  }
+
+  /** A crewmate turned it (ignored while you're holding it yourself). */
+  turnTo(yaw: number): void {
+    if (this.holds.size > 0 || !Number.isFinite(yaw)) return
+    this.remoteYaw = yaw
   }
 
   setHighlight(on: boolean): void {
     this.nacre.color.setHex(on ? 0xbfe6ff : 0xe8f2ff)
   }
 
-  update(): void {
+  update(dt = 1 / 60): void {
     const first = this.holds.entries().next().value
-    if (!first) return
+    if (!first) {
+      if (this.remoteYaw !== null) {
+        let d = this.remoteYaw - this.yaw
+        d = Math.atan2(Math.sin(d), Math.cos(d))
+        if (Math.abs(d) < 0.002) {
+          this.setYaw(this.remoteYaw)
+          this.remoteYaw = null
+        } else this.setYaw(this.yaw + d * (1 - Math.exp(-12 * dt)))
+      }
+      return
+    }
+    this.sendTimer -= dt
+    if (this.sendTimer <= 0) {
+      this.sendTimer = 0.1
+      this.onTurn(this.yaw)
+    }
     const [hand, start] = first
     let d = this.handAngle(hand) - start.handAngle
     d = Math.atan2(Math.sin(d), Math.cos(d))

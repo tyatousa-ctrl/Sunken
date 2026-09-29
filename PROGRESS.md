@@ -160,7 +160,7 @@ Up to four divers per crew. Solo play still works with no server at all.
 **Classes** (`systems/crew.ts`, `intro/CrewBoard.ts`): a crew board by the main mast with four plaques; touch one to take that class. One of each: in a crew the server refuses a class another human has, and new arrivals get a free one. Bots take whatever's left, so every skill is always in the crew. The start screen also has a Class menu.
 
 **Skills (B)**, 20–60 s cooldowns shown on the wrist:
-- **Navigator**: a trail of glowing motes to the next clue for 15 s (routed through the cabin doorway), and hidden ink on the back of the map (where the level's secret gems are).
+- **Navigator**: reads the map's hidden ink: B reveals the next hint straight away instead of waiting for it (hints nudge; they never give the answer), and the back of the map shows where the level's secret gems are. (It used to light a trail to the next clue; that gave too much away.)
 - **Strongman**: heaves heavy things aside (the Level 1 figurehead).
 - **Deep Diver**: double air, always; B shares air with the nearest diver (bot or human).
 - **Fish Whisperer**: a school of bream swims out, fetches the nearest treasure within 12 m, and brings it back.
@@ -195,7 +195,7 @@ Up to four divers per crew. Solo play still works with no server at all.
 - Round the high reef the water pours down: swimming up it, you're dragged back down (silt streaks show the current). The **Fish Whisperer** presses B beside the turtle to ride her: she carries you to the top and sets you down (the current doesn't reach the top). If nobody's the Fish Whisperer, the Fish Whisperer bot rides her up once you've been dragged down, and calls out the starfish it finds there.
 - The **door of stone** is set into the ridge, with a carved stone dial beside it (numbers 1–9). Grip the rim and turn it; it clicks past each number and settles on the one under the gold notch when you let go. Wrong numbers do nothing (the crew mutters); **7** grinds the door down into the sand.
 - Behind it, a sealed chamber holds **map piece III** on a plinth (with two coins and a gem). Taking it solves the riddle and opens the exit arch at the back of the chamber; swimming through ends the level with the summary and leads on to Level 3.
-- Hints unlock while stuck (the third gives the answer), the compass points the way after two minutes, and the Navigator's trail and hidden ink work as in Level 1.
+- Hints unlock while stuck (each a little more pointed, none giving the answer), the compass points the way after two minutes, and the Navigator's hidden ink works as in Level 1.
 
 **Collectibles:** 20 coins (18 in the meadow, 2 in the chamber), 3 gems (on the high reef, by an amphora in the east, and in the chamber), 2 tide runes. Bots don't go for things behind the closed door or up the high reef's current.
 
@@ -226,6 +226,10 @@ Riddle: *"When noon's light swims through the door, blue shows the way the old o
 - **Zipline.** A rope runs from just outside the crow's nest rim down and aft to the starboard side of the main deck, with a sign in the nest. Grip the rope and hold on: you slide down (up to 4 m/s, about two and a half seconds), the rope whirring and buzzing in your hand. Grip it with your other hand too to brake (2 m/s). Let go on the way and you drop (near the net, you catch it and hang there, as when you let go of the net). At the bottom a knot stops you and you drop the last metre to the deck. When the attack starts, anyone on the rope is put back on deck.
 
 - **Crew code on deck.** A sign under the four class plaques on the crew board shows the crew's 4-letter room code in big letters ("CREW CODE (friends join with it)"), so anyone already on board can read it out to friends who are still joining. Playing solo, it says so and points to the start screen.
+
+- **Hints, not answers.** Every level's three hints were rewritten as nudges: Level 1 no longer says "the figurehead" or who lifts it, Level 2 no longer gives the dial number (it points at the star you can't swim up to), Level 3 no longer names where each shell stands. Level 3's step "bounce the light from shell to shell onto the carved wall" now just says "Follow the blue light", and the carving's message no longer lists the remaining steps.
+- **Putting things away.** In the dive levels, A/X puts whatever that hand holds into the backpack (wherever your hand is), and closes the map if it's up (the thumbstick click still toggles it too). Anything taken out of the backpack goes back into it when you let go, instead of floating off, so map pieces no longer pile up in the water. On deck, A/X or B/Y on the hand holding a cutlass puts it back in the rack.
+- **Level 3 shells for the whole crew.** Turning a shell turns it on everyone's screen (its angle is shared ten times a second while it turns, and where it came to rest), so the beam is the same for everyone and whoever lights the carving does it for all. Someone arriving later finds the shells where the crew left them (the server remembers the last angle of each). When the light misses the next shell it now carries on past it at that shell's height, instead of stopping short or passing above or below it.
 
 **Checked:** in the emulator: the gear refuses a grab before the attack and comes off its rack after; two swords drawn, blades crossed and clashed (clang), a swipe across a sailor (blood, a bloody blade), both swords back in the rack; the mask display showing after putting the mask on. With two browsers: a sword drawn by one player rides in their hand on the other's screen and can't be grabbed there. Unit tests cover the blade contact maths.
 

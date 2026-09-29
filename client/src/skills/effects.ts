@@ -1,45 +1,6 @@
 import * as THREE from 'three'
 import type { Particles } from '../fx/Particles'
 
-const TRAIL_SECONDS = 15
-
-// Navigator: a trail of glowing motes from the diver to the next clue, for 15 s.
-export class NavigatorTrail {
-  private remaining = 0
-  private emitTimer = 0
-  private path: THREE.Vector3[] = []
-
-  constructor(private readonly glow: Particles) {}
-
-  get active(): boolean {
-    return this.remaining > 0
-  }
-
-  show(path: THREE.Vector3[]): void {
-    this.path = path.map((p) => p.clone())
-    this.remaining = TRAIL_SECONDS
-  }
-
-  /** Keep the start of the trail at the diver as they move. */
-  update(dt: number, from: THREE.Vector3, path: () => THREE.Vector3[]): void {
-    if (this.remaining <= 0) return
-    this.remaining -= dt
-    this.emitTimer -= dt
-    if (this.emitTimer > 0) return
-    this.emitTimer = 0.35
-    this.path = path()
-    let a = from.clone()
-    for (const b of this.path) {
-      const length = a.distanceTo(b)
-      for (let d = 0.5; d < length; d += 0.9) {
-        const p = a.clone().lerp(b, d / length)
-        this.glow.emit({ position: p, velocity: new THREE.Vector3(0, 0.05, 0), color: 0x9ff5ff, size: 0.12, endSize: 0.05, life: 1.2, alpha: 0.9 })
-      }
-      a = b.clone()
-    }
-  }
-}
-
 type FishPhase = 'gather' | 'fetch' | 'return' | 'done'
 
 // Fish Whisperer: a school of bream swims out, fetches a treasure, and brings it back.

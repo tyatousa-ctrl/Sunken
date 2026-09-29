@@ -74,6 +74,16 @@ describe('level progress', () => {
     for (let t = 0; t < 50; t++) assert.equal(p.update(1), null)
   })
 
+  it('lets the Navigator read the next hint early, one at a time, until they run out', () => {
+    const p = new LevelProgress(level2 as unknown as LevelData)
+    assert.equal(p.revealHint()?.type, 'hint')
+    assert.equal(p.unlockedHints.length, 1)
+    p.revealHint()
+    p.revealHint()
+    assert.equal(p.revealHint(), null)
+    assert.equal(p.unlockedHints.length, 3)
+  })
+
   it('shows the compass after two minutes without progress', () => {
     const p = new LevelProgress(data)
     for (let t = 0; t < 119; t++) p.update(1)
@@ -112,7 +122,7 @@ describe('level 2 data', () => {
     assert.equal(data.starfish, 7)
     assert.deepEqual(data.steps.map((s) => s.id), ['findDoor', 'dialNumber', 'takeMapPiece'])
     assert.equal(data.hints.length, 3)
-    assert.ok(data.hints[2].includes('7'), 'the last hint gives the answer')
+    assert.ok(data.hints.every((h) => !/\b7\b|seven/i.test(h)), 'hints nudge, they never give the answer')
     assert.equal(data.reward.mapPiece, 3)
     const p = new LevelProgress(data)
     assert.deepEqual(p.complete('dialNumber'), [], 'the dial only counts once the door is found')

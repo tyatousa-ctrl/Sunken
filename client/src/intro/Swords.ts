@@ -96,7 +96,7 @@ export class Swords {
       { text: 'Cutlasses', size: 40, bold: true, color: '#f2b64a' },
       { text: 'Grip a hilt to draw a sword', size: 28 },
       { text: 'Cross blades with a crewmate: they ring!', size: 28 },
-      { text: 'Let go and it slides back into the rack', size: 24, color: '#b9c7cf' },
+      { text: 'Let go (or press A/X) and it slides back into the rack', size: 24, color: '#b9c7cf' },
     ])
 
     // Blades hang point-down: the sword's -z (the blade) points at the deck.
@@ -116,7 +116,7 @@ export class Swords {
   }
 
   update(dt: number, halfHeight: number): void {
-    for (const sword of this.swords) sword.update(dt)
+    // (Each sword's own update runs with the grab system's.)
     for (const sword of this.swords) sword.measure(dt)
     this.clashes()
     this.cuts(dt)
@@ -381,6 +381,12 @@ export class Sword implements Interactable {
   }
 
   update(dt: number): void {
+    // A/X or B/Y on the hand holding it: back in the rack.
+    const holder = this.holder
+    if (holder && (holder.primaryPressed || holder.secondaryPressed)) {
+      holder.primaryPressed = holder.secondaryPressed = false
+      this.forceDrop()
+    }
     if (this.bloodTime > 0) {
       this.bloodTime = Math.max(0, this.bloodTime - dt)
       this.blood.visible = this.bloodTime > 0

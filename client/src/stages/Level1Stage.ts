@@ -200,6 +200,7 @@ export class Level1Stage extends DiveLevel {
         if (!hand.connected) continue
         const d = hand.worldPos(new THREE.Vector3()).distanceTo(lock)
         if (hand.held === this.keyItem && d < 0.18) {
+          this.backpack.forget(this.keyItem)
           this.grab.drop(hand)
           this.keyItem.enabled = false
           this.keyItem.object.visible = false

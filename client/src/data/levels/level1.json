@@ -25,9 +25,9 @@
     }
   ],
   "hints": [
-    "The captain slept in the cabin at the stern. Its door is on the deck.",
-    "The one who never wept is carved from stone: the ship's old figurehead.",
-    "The stone figurehead lies beside the captain's bunk. Only the Strongman can lift her: if that's you, press B beside her; if not, bring the Strongman bot (point at it and pull the trigger)."
+    "A captain sleeps at the back of a ship. Look for a door on the sunken galleon's deck.",
+    "Stone never weeps. What aboard a ship might be carved from stone?",
+    "Whatever lies heavy by the bunk needs real strength to move. Who in your crew has it?"
   ],
   "reward": {
     "mapPiece": 2,

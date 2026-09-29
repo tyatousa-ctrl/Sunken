@@ -9,7 +9,7 @@ const BOARD_Z = -1.5
 export const CREW_BOARD_SPOT = { x: halfWidthAt(BOARD_Z) - 0.35, z: BOARD_Z }
 
 const BLURB: Record<CharacterClass, string> = {
-  navigator: 'Reads hidden ink; lights a trail to the next clue',
+  navigator: 'Reads hidden ink: a hint on the map when stuck',
   strongman: 'Lifts, pushes and breaks heavy things alone',
   deepDiver: 'Double air; shares air with the crew',
   fishWhisperer: 'Calls sea creatures to help',

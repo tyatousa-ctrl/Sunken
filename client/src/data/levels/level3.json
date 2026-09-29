@@ -9,7 +9,7 @@
     },
     {
       "id": "lightCarving",
-      "objective": "Bounce the blue light from shell to shell onto the carved wall."
+      "objective": "Follow the blue light."
     },
     {
       "id": "takeMapPiece",
@@ -21,9 +21,9 @@
     }
   ],
   "hints": [
-    "The door is the arch in the cliff; noon's light pours through it and makes the grotto's water glow. A beam of that light rises from the water inside: follow it.",
-    "Three polished shells stand on the rock shelves. Climb out (grip a ledge at the surface) and turn each one by its rim so the beam bounces from shell to shell, and finally onto the carved wall.",
-    "The first shell is on the east shelf, the second in the smugglers' camp at the north end, the third on the west ledge. When the carving glows, take what it reveals; then the Strongman heaves the boulder off the underwater passage at the north end."
+    "The door is an arch low in the cliff. Inside, the noon light rises from the water: see where it goes.",
+    "Polished shells can bend light, and they turn if you grip their rims. Climb out of the water by gripping a ledge to reach them.",
+    "Light leaves a mirror at the same angle it arrives. And the old ones' way out is blocked by something only strength can shift."
   ],
   "reward": {
     "mapPiece": 4,
