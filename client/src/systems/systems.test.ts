@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { Inventory, SLOTS } from './Inventory'
 import { LevelProgress, type LevelData } from './LevelProgress'
 import level1 from '../data/levels/level1.json'
+import level2 from '../data/levels/level2.json'
 
 describe('backpack inventory', () => {
   it('stacks coins in one slot and gives keys their own', () => {
@@ -102,5 +103,21 @@ describe('skill cooldown', () => {
     assert.equal(skill.ready, false)
     skill.update(0.2)
     assert.equal(skill.trigger(), true)
+  })
+})
+
+describe('level 2 data', () => {
+  it('is the starfish riddle: find the door, dial the count, take the map piece', () => {
+    const data = level2 as LevelData & { starfish: number }
+    assert.equal(data.starfish, 7)
+    assert.deepEqual(data.steps.map((s) => s.id), ['findDoor', 'dialNumber', 'takeMapPiece'])
+    assert.equal(data.hints.length, 3)
+    assert.ok(data.hints[2].includes('7'), 'the last hint gives the answer')
+    assert.equal(data.reward.mapPiece, 3)
+    const p = new LevelProgress(data)
+    assert.deepEqual(p.complete('dialNumber'), [], 'the dial only counts once the door is found')
+    p.complete('findDoor')
+    p.complete('dialNumber')
+    assert.deepEqual(p.complete('takeMapPiece').map((e) => e.type), ['step', 'solved'])
   })
 })

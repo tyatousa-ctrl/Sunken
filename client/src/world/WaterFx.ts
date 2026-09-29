@@ -3,10 +3,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { applySurfaceShimmer } from './caustics'
 
 // Underside of the water surface plus soft god rays slanting down from it.
-export function makeWaterSurface(surfaceY: number): THREE.Mesh {
+export function makeWaterSurface(surfaceY: number, size = 160): THREE.Mesh {
   const material = new THREE.MeshBasicMaterial({ color: 0x5fb8e6, side: THREE.DoubleSide })
   applySurfaceShimmer(material)
-  const surface = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), material)
+  const surface = new THREE.Mesh(new THREE.PlaneGeometry(size, size), material)
   surface.rotation.x = Math.PI / 2
   surface.position.y = surfaceY
   return surface

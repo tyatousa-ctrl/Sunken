@@ -1,0 +1,34 @@
+{
+  "id": "level2",
+  "name": "The Seagrass Meadows",
+  "riddle": "Count the stars that live below, their number opens the door of stone.",
+  "steps": [
+    {
+      "id": "findDoor",
+      "objective": "Find the door of stone."
+    },
+    {
+      "id": "dialNumber",
+      "objective": "Set the stone dial to the number of stars."
+    },
+    {
+      "id": "takeMapPiece",
+      "objective": "Take what lies behind the door."
+    }
+  ],
+  "hints": [
+    "The stars that live below aren't in the sky: they're starfish, on the sand, in the seagrass and on the rocks. Touch one and it glows, so you know you've counted it.",
+    "The door of stone is set into the reef to the north. Its lock is the carved stone dial beside it: grip its rim and turn it.",
+    "There are seven starfish. The last one sits on top of the tall rock pillar in the west, where the current pulls you down; the Fish Whisperer can ride the turtle up there. Turn the dial to 7."
+  ],
+  "reward": {
+    "mapPiece": 3,
+    "nextRiddle": "When noon's light swims through the door, blue shows the way the old ones swore.",
+    "message": "Map piece III! The way to the Blue Grotto is open."
+  },
+  "collectibles": {
+    "coins": 20,
+    "gems": 3
+  },
+  "starfish": 7
+}

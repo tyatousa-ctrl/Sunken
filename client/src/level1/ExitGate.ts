@@ -20,6 +20,8 @@ export class ExitGate {
     /** Yaw so the arch's opening faces the level. */
     yaw: number,
     private readonly audio: AudioSystem,
+    /** Sand height (the level's seabed). */
+    floor: (x: number, z: number) => number = sandHeight,
   ) {
     const rock = new THREE.MeshStandardMaterial({ color: 0x3b3534, roughness: 1, flatShading: true })
     applyCaustics(rock, 0.6)
@@ -45,7 +47,7 @@ export class ExitGate {
       this.grille.add(rail)
     }
     this.group.add(this.grille)
-    this.group.position.set(position.x, sandHeight(position.x, position.z) - 0.2, position.z)
+    this.group.position.set(position.x, floor(position.x, position.z) - 0.2, position.z)
     this.group.rotation.y = yaw
     this.group.updateMatrixWorld(true)
 

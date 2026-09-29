@@ -12,7 +12,7 @@ Tracks milestones from `BRIEF.md`, decisions, and placeholders to replace later.
 | 4 | Level 1 + systems: backpack, map pieces, first riddle, Strongman skill, checkpoints | Built and tested end to end in an emulated Quest 3; waiting for real-headset test |
 | 5 | Multiplayer: Colyseus rooms, room codes, pose sync, shared objects, voice, reconnect | Built and tested with real clients (Node and two/three headless browsers); waiting for a multi-headset test |
 | 6 | Bots + all classes + magic: bot behaviour, all four skills, rune spells with gesture recognition | Built and tested (solo with 3 bots, crew with host-run bots); waiting for real-headset test |
-| 7 | Levels 2–5 + finale, polish | Not started |
+| 7 | Levels 2–5 + finale, polish | In progress: Level 2 built and tested end to end in an emulated Quest 3; Levels 3–5, finale and polish to come |
 
 ## Milestone 1: what's in it
 
@@ -183,6 +183,23 @@ Up to four divers per crew. Solo play still works with no server at all.
 - Solo Level 1 end to end and the crew server integration test still pass.
 
 **Not yet**: bots don't shoot clays, drink or play darts on deck (they walk with you); commanding a bot's skill works for the Strongman's heave and the Deep Diver's air (the other classes' skills are for humans for now); rune-locked doors arrive with the temple level.
+
+## Milestone 7: Level 2, The Seagrass Meadows
+
+**Shared dive-level machinery.** Level 1's systems (swimming, backpack, map, coins/gems/runes, class skills, magic, riddle steps checked by the server, the exit arch, bots, crew sync, the level summary) now live in one base, `DiveLevel`; each level adds only its world and its puzzle. Level 1 plays exactly as before. The server tracks every level's riddle on its own (steps are stored as `level:step`), and Level 2's collectibles have their own ids. Swimming out through Level 1's arch now takes you straight into Level 2. Level 2 is also on the start screen's "Start at" menu (`?stage=level2`).
+
+**The level.** Open Posidonia meadows (dense, tall, swaying seagrass on rolling sand) with a rocky reef ridge along the north, scattered rocks, amphorae, an air vent, four schools of bream and salema circling over the grass, and a loggerhead turtle gliding a slow loop round it all (her route passes most of the starfish and the high reef).
+
+**The riddle:** "Count the stars that live below, their number opens the door of stone."
+- Seven starfish: four on the sand, two on rocks, and one on top of the high reef, a tall rock pillar in the west. Touch one (hand or face) and it curls and glows from then on, so you know you've counted it; the count itself stays in your head.
+- Round the high reef the water pours down: swimming up it, you're dragged back down (silt streaks show the current). The **Fish Whisperer** presses B beside the turtle to ride her: she carries you to the top and sets you down (the current doesn't reach the top). If nobody's the Fish Whisperer, the Fish Whisperer bot rides her up once you've been dragged down, and calls out the starfish it finds there.
+- The **door of stone** is set into the ridge, with a carved stone dial beside it (numbers 1–9). Grip the rim and turn it; it clicks past each number and settles on the one under the gold notch when you let go. Wrong numbers do nothing (the crew mutters); **7** grinds the door down into the sand.
+- Behind it, a sealed chamber holds **map piece III** on a plinth (with two coins and a gem). Taking it solves the riddle and opens the exit arch at the back of the chamber; swimming through ends the level with the summary. Level 3 isn't built yet, so the game says so and saves the checkpoint.
+- Hints unlock while stuck (the third gives the answer), the compass points the way after two minutes, and the Navigator's trail and hidden ink work as in Level 1.
+
+**Collectibles:** 20 coins (18 in the meadow, 2 in the chamber), 3 gems (on the high reef, by an amphora in the east, and in the chamber), 2 tide runes. Bots don't go for things behind the closed door or up the high reef's current.
+
+**Checked:** a full walkthrough in the emulator (all seven starfish, the current, the turtle ride to the top, a wrong number, 7 opening the door, the map piece, the arch, the summary); nobody gets into the chamber over, round or behind it; Level 1's walkthrough still passes and leads into Level 2; the server tests cover per-level steps.
 
 ## Playtest fixes (after Milestone 6)
 

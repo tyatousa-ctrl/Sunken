@@ -6,7 +6,10 @@ import { ClaimTable, FirstWins, cleanName, generateCode, lowestFreeSlot } from '
 import { CLASSES, freeClass, hostOf, type CharacterClass, type HumanSeat } from '../client/src/systems/crew.ts'
 import { CrewPlayer, CrewState } from './schema.ts'
 
-const LEVEL1 = JSON.parse(readFileSync(new URL('../client/src/data/levels/level1.json', import.meta.url), 'utf8')) as LevelData
+/** Every level's riddle, from the same data files the game uses. */
+const LEVELS = new Map<string, LevelData>(
+  ['level1', 'level2'].map((id) => [id, JSON.parse(readFileSync(new URL(`../client/src/data/levels/${id}.json`, import.meta.url), 'utf8')) as LevelData]),
+)
 const POSE_LENGTH = 21
 const PULL_COOLDOWN_MS = 1500
 const MAX_POINTS = 50
@@ -22,7 +25,8 @@ export class CrewRoom extends Room<{ state: CrewState }> {
   private readonly clays = new FirstWins()
   private readonly poses = new Map<string, PoseMessage>()
   private readonly botPoses = new Map<string, PoseMessage>()
-  private readonly level1 = new LevelProgress(LEVEL1)
+  /** Riddle progress per level, created when a level's first step is taken. */
+  private readonly progress = new Map<string, LevelProgress>()
   private clayId = 0
   private crackerId = 0
   private lastPull = 0
@@ -173,12 +177,16 @@ export class CrewRoom extends Room<{ state: CrewState }> {
 
     // Riddle steps: validated in order on the server, then applied by everyone.
     this.onMessage('act', (client, msg: { level?: string; step?: string }) => {
-      if (msg?.level !== LEVEL1.id || typeof msg.step !== 'string') return
-      const events = this.level1.complete(msg.step)
+      const data = typeof msg?.level === 'string' ? LEVELS.get(msg.level) : undefined
+      if (!data || typeof msg.step !== 'string') return
+      let progress = this.progress.get(data.id)
+      if (!progress) this.progress.set(data.id, (progress = new LevelProgress(data)))
+      const events = progress.complete(msg.step)
       if (events.length === 0) return
-      this.state.steps.push(msg.step)
-      this.broadcast('step', { level: LEVEL1.id, step: msg.step, by: client.sessionId })
-      if (this.level1.solved) this.state.mapPieces.push(LEVEL1.reward.mapPiece)
+      // Stored as "level:step" so late joiners can catch up on every level.
+      this.state.steps.push(`${data.id}:${msg.step}`)
+      this.broadcast('step', { level: data.id, step: msg.step, by: client.sessionId })
+      if (progress.solved) this.state.mapPieces.push(data.reward.mapPiece)
     })
 
     // WebRTC voice signalling, relayed to one player.

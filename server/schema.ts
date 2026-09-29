@@ -27,7 +27,7 @@ export const CrewState = schema(
     /** Server time (ms) the attack started; 0 until someone shoots the ship in the bay. */
     attackAt: t.number(),
     shooter: t.string(),
-    /** Level 1 riddle steps done, in order. */
+    /** Riddle steps done, in order, as "level:step". */
     steps: t.array('string'),
     /** Collectibles taken (by id), so nobody sees a coin someone else already picked up. */
     collected: t.array('string'),
