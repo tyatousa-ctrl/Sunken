@@ -104,6 +104,12 @@ export class CrewRoom extends Room<{ state: CrewState }> {
       if (this.state.attackAt || !isVec3(msg?.at) || !isVec3(msg?.vel) || typeof msg.local !== 'number') return
       this.broadcast('clayThrown', { id: ++this.clayId, at: msg.at, vel: msg.vel, by: client.sessionId, local: msg.local })
     })
+    // Whoever sails the ship (the helmsman, or the host) says where she is; everyone else follows.
+    this.onMessage('sail', (client, msg: { x?: number; z?: number; heading?: number; speed?: number; wheel?: number }) => {
+      const nums = [msg?.x, msg?.z, msg?.heading, msg?.speed, msg?.wheel]
+      if (this.state.attackAt || !nums.every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) < 1e5)) return
+      this.broadcast('sail', { x: msg.x, z: msg.z, heading: msg.heading, speed: msg.speed, wheel: msg.wheel }, { except: client })
+    })
     // Someone fired a deck cannon: everyone else sees and hears it.
     this.onMessage('cannon', (client, msg: { i?: number }) => {
       if (typeof msg?.i === 'number') this.broadcast('cannon', { i: msg.i, by: client.sessionId }, { except: client })

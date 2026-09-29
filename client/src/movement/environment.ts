@@ -38,8 +38,11 @@ export interface WalkEnvironment {
    * nest, and on the nest floor when you're up in it). Omitted: the lowest walkable surface.
    */
   groundHeight(x: number, z: number, below?: number): number | null
-  /** Keep a head position inside walkable space by moving it horizontally (rails, walls). */
-  constrain(head: THREE.Vector3): void
+  /**
+   * Keep a head position inside walkable space by moving it horizontally (rails, walls). `feetY`
+   * (world) says which level you're on (main deck, stairs, quarterdeck); omitted: the main deck.
+   */
+  constrain(head: THREE.Vector3, feetY?: number): void
   waterY: number
   /** Something to climb (a rigging net): is this world point within `reach` of it? */
   climbable?(point: THREE.Vector3, reach: number): boolean

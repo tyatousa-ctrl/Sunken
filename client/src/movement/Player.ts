@@ -216,7 +216,7 @@ export class Player {
     this.camera.getWorldPosition(head)
     if (!this.climbing) {
       const before = this.v1.copy(head)
-      env.constrain(head)
+      env.constrain(head, this.rig.position.y - lift)
       this.rig.position.x += head.x - before.x
       this.rig.position.z += head.z - before.z
     }

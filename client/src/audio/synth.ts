@@ -1,7 +1,23 @@
 // Procedural one-shot sounds baked into AudioBuffers (no audio files to license yet).
 // Each recipe is filtered noise and/or tones with an envelope, plus optional echoes.
 
-export type SfxName = 'gunshot' | 'cannon' | 'crack' | 'splash' | 'bigSplash' | 'click' | 'impact' | 'whistle' | 'gulp' | 'thud' | 'pop' | 'pour' | 'dartHit'
+export type SfxName =
+  | 'gunshot'
+  | 'cannon'
+  | 'crack'
+  | 'splash'
+  | 'bigSplash'
+  | 'click'
+  | 'impact'
+  | 'whistle'
+  | 'gulp'
+  | 'thud'
+  | 'pop'
+  | 'pour'
+  | 'dartHit'
+  | 'coo'
+  | 'squawk'
+  | 'crunch'
 
 interface Recipe {
   seconds: number
@@ -12,6 +28,8 @@ interface Recipe {
   /** Low sine "thump" frequency and amount. */
   thump?: [freq: number, amount: number]
   tone?: [startFreq: number, endFreq: number, amount: number]
+  /** Wobble on the tone: rate (Hz) and depth (Hz). */
+  vibrato?: [rate: number, depth: number]
   attack?: number
   decay: number
   /** Echo delays (s) and gains: cliffs bouncing a gunshot back. */
@@ -33,6 +51,10 @@ const RECIPES: Record<SfxName, Recipe> = {
   pop: { seconds: 0.15, tone: [900, 400, 0.5], decay: 0.04, gain: 0.4 },
   pour: { seconds: 0.6, noise: 1, lowpass: 2200, highpass: 700, attack: 0.05, decay: 0.3, gain: 0.3 },
   dartHit: { seconds: 0.18, noise: 0.7, lowpass: 1800, thump: [180, 0.6], decay: 0.03, gain: 0.8 },
+  // Polly: a soft throaty coo, a rough squawk, and cracker crunching.
+  coo: { seconds: 0.7, tone: [430, 330, 1], vibrato: [7, 25], noise: 0.08, lowpass: 700, attack: 0.08, decay: 0.3, gain: 0.35 },
+  squawk: { seconds: 0.45, tone: [1350, 950, 0.7], vibrato: [38, 260], noise: 0.5, highpass: 900, lowpass: 3500, attack: 0.01, decay: 0.16, gain: 0.45 },
+  crunch: { seconds: 0.12, noise: 1, highpass: 1400, lowpass: 5000, decay: 0.025, gain: 0.35 },
 }
 
 export function synthesize(context: BaseAudioContext, name: SfxName): AudioBuffer {
@@ -67,7 +89,8 @@ export function synthesize(context: BaseAudioContext, name: SfxName): AudioBuffe
       s += Math.sin(phase) * r.thump[1] * Math.exp(-t / (r.decay * 1.5))
     }
     if (r.tone) {
-      const f = r.tone[0] + (r.tone[1] - r.tone[0]) * Math.min(1, t / r.seconds)
+      let f = r.tone[0] + (r.tone[1] - r.tone[0]) * Math.min(1, t / r.seconds)
+      if (r.vibrato) f += Math.sin(2 * Math.PI * r.vibrato[0] * t) * r.vibrato[1]
       tonePhase += (2 * Math.PI * f) / rate
       s += Math.sin(tonePhase) * r.tone[2]
     }

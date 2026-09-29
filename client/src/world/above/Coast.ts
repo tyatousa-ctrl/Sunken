@@ -9,9 +9,12 @@ const ZENITH = new THREE.Color(0x4c82bf)
 // The world above water at golden hour off Sicily: sky, animated sea, limestone cliffs with a
 // lighthouse, and Mount Etna smoking on the horizon. Everything is built in code.
 export class AboveWater {
+  /** The sun as seen from the ship (turns as the ship turns). */
+  private readonly sunDir = SUN_DIR.clone()
+  private readonly sun: THREE.DirectionalLight
   private readonly oceanUniforms = {
     uTime: { value: 0 },
-    uSun: { value: SUN_DIR },
+    uSun: { value: this.sunDir },
     uHorizon: { value: HORIZON },
     ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
   }
@@ -19,23 +22,33 @@ export class AboveWater {
   private plumeTimer = 0
   private readonly beacon: THREE.Mesh
 
-  constructor(scene: THREE.Scene, root: THREE.Group) {
+  /**
+   * `scenery`: where the sea, coast and volcano go (moved around the ship when it sails); the sky
+   * and the lights stay in `root`.
+   */
+  constructor(scene: THREE.Scene, root: THREE.Group, scenery: THREE.Object3D = root) {
     scene.background = HORIZON.clone()
     scene.fog = new THREE.Fog(HORIZON.clone(), 250, 4200)
 
     root.add(new THREE.HemisphereLight(0xdcebff, 0x8a7350, 2.1))
-    const sun = new THREE.DirectionalLight(0xffd3a0, 2.8)
-    sun.position.copy(SUN_DIR).multiplyScalar(100)
-    root.add(sun)
+    this.sun = new THREE.DirectionalLight(0xffd3a0, 2.8)
+    this.sun.position.copy(SUN_DIR).multiplyScalar(100)
+    root.add(this.sun)
 
-    root.add(makeSky())
-    root.add(this.makeOcean())
-    root.add(makeCliffs())
+    root.add(makeSky(this.sunDir))
+    scenery.add(this.makeOcean())
+    scenery.add(makeCliffs())
     const lighthouse = makeLighthouse()
     this.beacon = lighthouse.userData.beacon
-    root.add(lighthouse)
-    root.add(makeEtna())
-    root.add(this.plume.points)
+    scenery.add(lighthouse)
+    scenery.add(makeEtna())
+    scenery.add(this.plume.points)
+  }
+
+  /** The ship has turned to `heading` (radians, CCW from above): the sun swings the other way. */
+  setHeading(heading: number): void {
+    this.sunDir.copy(SUN_DIR).applyAxisAngle(new THREE.Vector3(0, 1, 0), -heading)
+    this.sun.position.copy(this.sunDir).multiplyScalar(100)
   }
 
   update(dt: number, elapsed: number, halfHeight: number): void {
@@ -111,9 +124,9 @@ export class AboveWater {
 
 const ETNA_TOP = new THREE.Vector3(-1900, 880, -2700)
 
-function makeSky(): THREE.Mesh {
+function makeSky(sunDir: THREE.Vector3): THREE.Mesh {
   const material = new THREE.ShaderMaterial({
-    uniforms: { uSun: { value: SUN_DIR }, uHorizon: { value: HORIZON }, uZenith: { value: ZENITH } },
+    uniforms: { uSun: { value: sunDir }, uHorizon: { value: HORIZON }, uZenith: { value: ZENITH } },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
       void main() {

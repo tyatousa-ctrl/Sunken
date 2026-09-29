@@ -22,6 +22,9 @@ import { saveSettings } from '../core/settings'
 import { BOW_Z, CABIN_FRONT_Z, DECK_Y, Galleon, STERN_Z, halfWidthAt } from '../world/ship/Galleon'
 import { NET_OBSTACLES, Rigging } from '../intro/Rigging'
 import { DeckCannons, MATCH_CRATE } from '../intro/DeckCannons'
+import { PERCH_SPOT, Quarterdeck, STAIRS } from '../intro/Quarterdeck'
+import { Sailing, type SailState } from '../intro/Sailing'
+import { CrackerPack, Parrot } from '../intro/Parrot'
 import { Level1Stage } from './Level1Stage'
 
 /** The "harmless merchant" anchored in the bay, ~150 m off the starboard bow. */
@@ -49,6 +52,9 @@ const OBSTACLES: Obstacle[] = [
   { x: CREW_BOARD_SPOT.x, z: CREW_BOARD_SPOT.z, r: 0.35 },
   { x: MATCH_CRATE.x, z: MATCH_CRATE.z, r: 0.35 },
   ...NET_OBSTACLES,
+  // The high end of the stairs, from the side (you can't walk in under them).
+  { x: (STAIRS.x0 + STAIRS.x1) / 2, z: STAIRS.zTop - 1.3, r: 0.4 },
+  { x: (STAIRS.x0 + STAIRS.x1) / 2, z: STAIRS.zTop - 0.5, r: 0.4 },
 ]
 
 // Milestone 3: golden hour on the galleon's deck. Clay shooting is the fake-out; a stray pellet into
@@ -70,6 +76,11 @@ export class IntroStage implements Stage {
   /** The prompt the rigging put up (so we only clear our own). */
   private riggingPrompt = ''
   private sawTheView = false
+  private quarterdeck!: Quarterdeck
+  private sailing!: Sailing
+  private polly!: Parrot
+  private sailTimer = 0
+  private warnedShoals = false
   private readonly guns: Shotgun[] = []
   private readonly raycaster = new THREE.Raycaster()
   private above!: AboveWater
@@ -101,7 +112,9 @@ export class IntroStage implements Stage {
   enter(): void {
     const { game } = this
     game.scene.add(this.root)
-    this.above = new AboveWater(game.scene, this.root)
+    // The ship sails: the sea, the coast and the ship in the bay move around her.
+    this.sailing = new Sailing(this.root, this.ship, this.splash, () => [this.enemy.group.getWorldPosition(new THREE.Vector3())])
+    this.above = new AboveWater(game.scene, this.root, this.sailing.scenery)
     this.root.add(this.ship.group)
 
     const toUs = ENEMY_POSITION.clone().negate().setY(0).normalize()
@@ -111,7 +124,7 @@ export class IntroStage implements Stage {
     this.enemy.group.scale.setScalar(0.85)
     this.enemy.group.position.copy(ENEMY_POSITION)
     this.enemy.group.rotation.y = this.broadsideYaw + 1.25
-    this.root.add(this.enemy.group)
+    this.sailing.scenery.add(this.enemy.group)
 
     for (const p of [this.smoke, this.fire, this.debris, this.splash]) this.root.add(p.points)
 
@@ -134,6 +147,19 @@ export class IntroStage implements Stage {
       onFire: (i) => game.net?.send('cannon', { i }),
     })
     this.crew = new Crew(this.ship, this.root)
+    this.quarterdeck = new Quarterdeck(this.ship, this.grab, game.audio)
+    // Polly perches on her stand by the helm, facing the wheel.
+    const perch = new THREE.Object3D()
+    perch.position.copy(PERCH_SPOT).add(new THREE.Vector3(0, 1.32, 0))
+    perch.rotation.y = -Math.PI / 2
+    this.ship.shake.add(perch)
+    this.polly = new Parrot(perch, this.root, {
+      audio: game.audio,
+      crumbs: this.debris,
+      ground: (x, z, below) => this.walkEnv.groundHeight(x, z, below),
+      heads: () => [game.camera.getWorldPosition(new THREE.Vector3())],
+    })
+    this.grab.add(new CrackerPack(this.quarterdeck.table, this.polly, game.audio))
     this.gear = new GearRack(this.ship, this.grab, game.camera, game.audio, (hand) => this.grab.drop(hand))
     this.gear.onChange = (piece) => this.onGear(piece)
     this.barrel = new BeerBarrel(this.ship, this.grab, {
@@ -186,6 +212,8 @@ export class IntroStage implements Stage {
     this.range.faceSign(game.camera)
     this.cannons.update(dt, game.camera)
     this.updateRigging()
+    this.updateHelm(dt, elapsed)
+    this.polly.update(dt, elapsed, game.hands)
     this.crewBoard.update(dt, game.hands, game.bots.members(), game.net?.sessionId ?? 'me')
     this.updateDrunk(dt)
     this.crew.update(dt, elapsed)
@@ -222,6 +250,10 @@ export class IntroStage implements Stage {
     game.audio.silence(1.2)
     game.hud.clear()
     this.riggingPrompt = ''
+    // Heave to: the ship slows to a stop, and the other ship is no longer part of the moving scenery.
+    this.sailing.underway = false
+    this.root.attach(this.enemy.group)
+    this.aimEnemyAtUs()
     // Anyone up the rigging is back on deck: the mast is about to take hits.
     if (game.player.climbing || this.rigging.inNest(game.camera.getWorldPosition(this.v))) {
       game.player.placeFeet(this.rigging.footOfNet(this.v))
@@ -297,6 +329,14 @@ export class IntroStage implements Stage {
       gun.onReleased = () => net.send('release', { id })
     })
     on<{ id: string }>('claimDenied', (msg) => {
+      if (msg.id === 'wheel') {
+        for (const hand of this.game.hands) if (hand.held === this.quarterdeck.wheel) {
+          hand.held = null
+          this.quarterdeck.wheel.release(hand)
+        }
+        this.game.hud.now('Someone else has the helm.', 2)
+        return
+      }
       const gun = this.guns[Number(msg.id.replace('gun', ''))]
       if (gun && msg.id.startsWith('gun')) {
         gun.forceDrop()
@@ -311,6 +351,14 @@ export class IntroStage implements Stage {
     })
     on<{ id: number }>('clayBroken', (msg) => this.range.shatterById(msg.id))
     on<{ i: number }>('cannon', (msg) => this.cannons.fireRemote(msg.i))
+    on<SailState>('sail', (msg) => {
+      const holder = net.state?.claims?.get('wheel') as string | undefined
+      const command = holder ? holder === net.sessionId : this.game.bots.simulating
+      if (!command) this.sailing.receive(msg)
+    })
+    const wheel = this.quarterdeck.wheel
+    wheel.onGrabbed = () => net.send('claim', { id: 'wheel' })
+    wheel.onReleased = () => net.send('release', { id: 'wheel' })
     on<{ id: number; at: number[]; vel: number[]; by: string; local: number }>('clayThrown', (msg) => {
       if (msg.by === net.sessionId) this.range.renameClay(msg.local, msg.id)
       else if (this.phase === 'fakeout') this.range.launchThrown(msg.id, new THREE.Vector3().fromArray(msg.at), new THREE.Vector3().fromArray(msg.vel))
@@ -367,7 +415,7 @@ export class IntroStage implements Stage {
     const nudges: [number, () => void][] = [
       [100, () => game.hud.say("That merchant's been sitting in the bay all afternoon...", 5, 'Nino')],
       [170, () => {
-        this.crew.parrot.flyTo(this.enemy.group.position)
+        this.polly.flyTo(this.enemy.group.getWorldPosition(new THREE.Vector3()))
         game.hud.say("Polly doesn't like the look of that ship.", 5, 'Rosalia')
       }],
       [240, () => game.hud.say('Odd. Not a soul on her deck.', 5, 'Turi')],
@@ -427,6 +475,49 @@ export class IntroStage implements Stage {
         return
       }
     }
+  }
+
+  // ---- Sailing ------------------------------------------------------------------------------------
+
+  /** The wheel steers; in a crew, whoever holds it (or the host) sails for everyone. */
+  private updateHelm(dt: number, elapsed: number): void {
+    const { game, sailing } = this
+    const wheel = this.quarterdeck.wheel
+    const net = game.net
+    const holder = net?.state?.claims?.get('wheel') as string | undefined
+    wheel.lockedBy = net && holder && holder !== net.sessionId ? holder : null
+    const command = !net || (holder ? holder === net.sessionId : game.bots.simulating)
+    if (command) sailing.takeCommand()
+    const used = sailing.update(dt, elapsed, wheel.rudder)
+    if (!sailing.commanding && !wheel.held) wheel.setAngle(sailing.state.wheel)
+    else sailing.state.wheel = wheel.angle
+    this.above.setHeading(sailing.state.heading)
+    if (sailing.correcting && used !== 0 && !this.warnedShoals && this.phase === 'fakeout') {
+      this.warnedShoals = true
+      game.hud.say(wheel.held ? "Shoals ahead, Captain! Bringin' her about." : 'Easy there, bringing her about!', 3, 'Salvo')
+    }
+    if (!sailing.correcting) this.warnedShoals = false
+    // The one sailing the ship tells everyone else where she is, five times a second.
+    this.sailTimer -= dt
+    if (net && command && this.sailTimer <= 0) {
+      this.sailTimer = 0.2
+      const s = sailing.state
+      net.send('sail', { x: s.x, z: s.z, heading: s.heading, speed: s.speed, wheel: s.wheel })
+    }
+  }
+
+  /** The attack begins: turn the other ship (wherever the voyage left her) into a sensible range. */
+  private aimEnemyAtUs(): void {
+    const at = this.enemy.group.position
+    const flat = new THREE.Vector3(at.x, 0, at.z)
+    const distance = flat.length()
+    if (distance > 260 || distance < 80) {
+      flat.setLength(160)
+      at.x = flat.x
+      at.z = flat.z
+    }
+    const toUs = flat.clone().negate().normalize()
+    this.broadsideYaw = Math.atan2(toUs.z, -toUs.x)
   }
 
   // ---- Cannons and rigging ------------------------------------------------------------------------
@@ -649,11 +740,24 @@ export class IntroStage implements Stage {
           const nest = this.rigging?.nestFloorAt(x, z, below) ?? null
           if (nest !== null) return nest
         }
+        const upper = this.quarterdeck?.groundAt(x, z, below) ?? null
+        if (upper !== null) return upper
         const p = toLocal(x, z)
         if (p.z > STERN_Z || p.z < BOW_Z || Math.abs(p.x) > halfWidthAt(p.z)) return null
         return ship.localToWorld(p.setY(DECK_Y)).y
       },
-      constrain: (head) => {
+      constrain: (head, feetY) => {
+        if (feetY !== undefined && this.quarterdeck) {
+          // Up the stairs or on the quarterdeck: its own railings apply.
+          const q = ship.worldToLocal(local.set(head.x, feetY, head.z))
+          const feetLocal = q.y
+          if (this.quarterdeck.constrain(q, feetLocal)) {
+            const world = ship.localToWorld(q)
+            head.x = world.x
+            head.z = world.z
+            return
+          }
+        }
         if (this.rigging?.inNest(head)) {
           const q = ship.worldToLocal(local.copy(head))
           this.rigging.constrainInNest(q)

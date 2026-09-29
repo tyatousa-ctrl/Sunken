@@ -174,6 +174,7 @@ export class Game implements GameContext {
     this.botCommands.update(dt)
     this.updateNet(dt)
     this.updateTransition(dt)
+    this.controllers.setGlove(this.player.env?.kind === 'swim' ? 'neoprene' : 'skin')
     this.updateSelfBody()
     this.hud.update(dt, inXr)
     this.guide.enabled = this.settings.buttonHints

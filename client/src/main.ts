@@ -1,3 +1,4 @@
+import * as THREE from 'three'
 import './style.css'
 import { Game } from './core/Game'
 import { loadSettings, saveSettings } from './core/settings'
@@ -171,4 +172,4 @@ if (saved) {
 }
 
 // Test hook: `?debug` exposes the game object for automated browser tests and console poking.
-if (params.has('debug')) Object.assign(window, { sunken: game })
+if (params.has('debug')) Object.assign(window, { sunken: game, THREE })

@@ -77,6 +77,17 @@ assert.equal(cannons.a.length, 0, 'the firer does not get their own shot back')
 assert.equal(cannons.b[0].i, 2)
 console.log('hand-thrown clay and cannon fire relayed')
 
+// The one sailing the ship shares her position; bad numbers are ignored.
+const sails: any[] = []
+bob.onMessage('sail', (m) => sails.push(m))
+alice.onMessage('sail', () => assert.fail('the sender does not get its own sail state'))
+alice.send('sail', { x: 1, z: -20, heading: -0.1, speed: 2.2, wheel: 1.5 })
+alice.send('sail', { x: 'far', z: 0, heading: 0, speed: 0, wheel: 0 })
+await wait(300)
+assert.equal(sails.length, 1)
+assert.deepEqual(sails[0], { x: 1, z: -20, heading: -0.1, speed: 2.2, wheel: 1.5 })
+console.log('sail state relayed')
+
 // Collectibles count once.
 alice.send('collect', { id: 'coin3', points: 10 })
 bob.send('collect', { id: 'coin3', points: 10 })

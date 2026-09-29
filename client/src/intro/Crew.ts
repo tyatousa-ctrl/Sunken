@@ -87,103 +87,12 @@ class Sailor {
   }
 }
 
-type ParrotMode = 'perched' | 'outbound' | 'circling' | 'returning'
-
-// The parrot: perches on the starboard rail; can fly out to circle a target and come back.
-class Parrot {
-  readonly group = new THREE.Group()
-  private readonly wings: THREE.Mesh[] = []
-  private mode: ParrotMode = 'perched'
-  private readonly target = new THREE.Vector3()
-  private circle = 0
-  private readonly v = new THREE.Vector3()
-
-  constructor(
-    private readonly perch: THREE.Object3D,
-    private readonly root: THREE.Group,
-  ) {
-    const green = new THREE.MeshStandardMaterial({ color: 0x2c9a3f, roughness: 0.7 })
-    const red = new THREE.MeshStandardMaterial({ color: 0xd23a2a, roughness: 0.7 })
-    const beak = new THREE.MeshStandardMaterial({ color: 0xe8c33a, roughness: 0.5 })
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), green)
-    body.scale.set(0.8, 1, 1.4)
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), red)
-    head.position.set(0, 0.07, -0.08)
-    const bill = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.05, 6), beak)
-    bill.position.set(0, 0.06, -0.14)
-    bill.rotation.x = -Math.PI / 2
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.01, 0.16), red)
-    tail.position.set(0, -0.02, 0.15)
-    this.group.add(body, head, bill, tail)
-    for (const side of [-1, 1]) {
-      const wing = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.1).translate(side * 0.08, 0, 0), green)
-      ;(wing.material as THREE.Material).side = THREE.DoubleSide
-      wing.position.y = 0.02
-      this.group.add(wing)
-      this.wings.push(wing)
-    }
-    perch.add(this.group)
-  }
-
-  flyTo(target: THREE.Vector3): void {
-    if (this.mode !== 'perched') return
-    this.target.copy(target)
-    this.root.attach(this.group)
-    this.mode = 'outbound'
-  }
-
-  update(dt: number, elapsed: number): void {
-    const flap = this.mode === 'perched' ? Math.sin(elapsed * 2) * 0.1 : Math.sin(elapsed * 22) * 0.9
-    this.wings[0].rotation.z = -flap
-    this.wings[1].rotation.z = flap
-    if (this.mode === 'perched') return
-    const speed = 11
-    if (this.mode === 'outbound') {
-      const goal = this.v.copy(this.target).add(new THREE.Vector3(0, 12, 0))
-      if (this.moveToward(goal, speed * dt)) {
-        this.mode = 'circling'
-        this.circle = 0
-      }
-    } else if (this.mode === 'circling') {
-      this.circle += dt * 0.7
-      const goal = this.v.set(Math.cos(this.circle) * 9, 12, Math.sin(this.circle) * 9).add(this.target)
-      this.moveToward(goal, speed * dt)
-      if (this.circle > Math.PI * 4) this.mode = 'returning'
-    } else if (this.perch.getWorldPosition(this.v) && this.moveToward(this.v, speed * dt)) {
-      this.perch.attach(this.group)
-      this.group.position.set(0, 0, 0)
-      this.group.rotation.set(0, Math.PI / 2, 0)
-      this.mode = 'perched'
-    }
-  }
-
-  private moveToward(goal: THREE.Vector3, step: number): boolean {
-    const to = goal.clone().sub(this.group.position)
-    const dist = to.length()
-    if (dist <= step) {
-      this.group.position.copy(goal)
-      return true
-    }
-    this.group.position.addScaledVector(to, step / dist)
-    this.group.lookAt(goal)
-    this.group.rotateY(Math.PI)
-    return false
-  }
-}
-
 export class Crew {
   readonly sailors: Sailor[]
-  readonly parrot: Parrot
 
   constructor(ship: Galleon, root: THREE.Group) {
     this.sailors = SPECS.map((spec) => new Sailor(spec))
     for (const s of this.sailors) ship.shake.add(s.group)
-    const perch = new THREE.Object3D()
-    const z = 3.2
-    perch.position.set(halfWidthAt(z) - 0.02, DECK_Y + 1.1, z)
-    perch.rotation.y = Math.PI / 2
-    ship.shake.add(perch)
-    this.parrot = new Parrot(perch, root)
   }
 
   get(name: string): Sailor {
@@ -196,6 +105,5 @@ export class Crew {
 
   update(dt: number, elapsed: number): void {
     for (const s of this.sailors) s.update(dt, elapsed)
-    this.parrot.update(dt, elapsed)
   }
 }
