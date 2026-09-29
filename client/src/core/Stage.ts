@@ -6,6 +6,7 @@ import type { ComfortVignette } from '../movement/ComfortVignette'
 import type { Player } from '../movement/Player'
 import type { Hud } from '../ui/Hud'
 import type { WristComputer } from '../ui/WristComputer'
+import type { Inventory } from '../systems/Inventory'
 import type { Settings } from './settings'
 
 /** Things that last the whole run (achievements, stats), shown on the victory screen later. */
@@ -15,6 +16,20 @@ export interface RunRecord {
   clayShots: number
   /** Achievement: a bullseye on the dart board before the attack. */
   bullseyeBeforeBattle: boolean
+}
+
+export type CharacterClass = 'navigator' | 'strongman' | 'deepDiver' | 'fishWhisperer'
+
+/** The crew's shared progress: carried from stage to stage, saved at checkpoints. */
+export interface PartyState {
+  character: CharacterClass
+  inventory: Inventory
+  score: number
+  hasMap: boolean
+  /** Map pieces found (piece I is the part of the map you start with). */
+  mapPieces: number[]
+  /** The level to resume from. */
+  checkpoint: string
 }
 
 /** Shared services a stage can use. */
@@ -31,6 +46,7 @@ export interface GameContext {
   desktop: DesktopControls
   settings: Settings
   record: RunRecord
+  party: PartyState
   /** The hands in use this frame: both controllers in VR, the virtual hand on desktop. */
   readonly hands: Hand[]
   readonly inXr: boolean

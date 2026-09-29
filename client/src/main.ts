@@ -5,12 +5,22 @@ import type { VignetteStrength } from './movement/ComfortVignette'
 import type { TurnMode } from './movement/Player'
 import { DiveStage } from './stages/DiveStage'
 import { IntroStage } from './stages/IntroStage'
+import { Level1Stage } from './stages/Level1Stage'
 
 const settings = loadSettings()
 const game = new Game(document.getElementById('app')!, settings)
-// `?stage=sandbox` skips the intro and drops straight into the underwater movement sandbox.
+// `?stage=level1` / `?stage=sandbox` skip the intro (also offered by the "Start at" menu).
 const params = new URLSearchParams(location.search)
-game.start(params.get('stage') === 'sandbox' ? new DiveStage(game, 'sandbox') : new IntroStage(game))
+const startAt = params.get('stage') ?? 'intro'
+game.start(startAt === 'sandbox' ? new DiveStage(game) : startAt === 'level1' ? new Level1Stage(game, false) : new IntroStage(game))
+
+const startSelect = document.getElementById('opt-start') as HTMLSelectElement
+startSelect.value = ['intro', 'level1', 'sandbox'].includes(startAt) ? startAt : 'intro'
+startSelect.addEventListener('change', () => {
+  const next = new URLSearchParams(location.search)
+  next.set('stage', startSelect.value)
+  location.search = next.toString()
+})
 
 const fpsToggle = document.getElementById('opt-fps') as HTMLInputElement
 const seatedToggle = document.getElementById('opt-seated') as HTMLInputElement

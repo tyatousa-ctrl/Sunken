@@ -15,6 +15,7 @@ export interface VirtualPad {
   stick: THREE.Vector2
   primary: boolean
   secondary: boolean
+  stickClick: boolean
 }
 
 // One tracked Quest Touch controller: buttons, thumbstick, pose and velocity in rig space, haptics.
@@ -33,6 +34,8 @@ export class Hand {
   primaryPressed = false
   /** B (right) / Y (left). */
   secondaryPressed = false
+  /** Thumbstick clicked in this frame. */
+  stickPressed = false
 
   /** Grip position in rig space, and its smoothed velocity (m/s). */
   readonly localPos = new THREE.Vector3()
@@ -47,6 +50,7 @@ export class Hand {
   private hasPrev = false
   private triggerDown = false
   private primaryDown = false
+  private stickDown = false
   private secondaryDown = false
   private readonly q = new THREE.Quaternion()
 
@@ -75,11 +79,14 @@ export class Hand {
       this.secondaryPressed = secondary && !this.secondaryDown
       this.primaryDown = primary
       this.secondaryDown = secondary
+      const stick = pad ? (pad.buttons[3]?.pressed ?? false) : v!.stickClick
+      this.stickPressed = stick && !this.stickDown
+      this.stickDown = stick
     } else {
       this.trigger = 0
       this.squeeze = false
       this.stick.set(0, 0)
-      this.primaryPressed = this.secondaryPressed = false
+      this.primaryPressed = this.secondaryPressed = this.stickPressed = false
     }
     this.squeezePressed = this.squeeze && !wasSqueezed
     this.squeezeReleased = !this.squeeze && wasSqueezed

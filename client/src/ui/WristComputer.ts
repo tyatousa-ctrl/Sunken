@@ -5,6 +5,9 @@ export interface DiveStatus {
   depth: number
   speed: number
   refilling: boolean
+  /** e.g. "STRONG READY" or "STRONG 12s". */
+  skill?: string
+  score?: number
 }
 
 // Dive computer on the left wrist: air gauge, depth and speed. Mirrored to a DOM readout on desktop.
@@ -51,7 +54,7 @@ export class WristComputer {
     const pct = Math.round(status.air * 100)
     const low = status.air < 0.25
     const critical = status.air < 0.1
-    this.dom.textContent = `Air ${pct}%${status.refilling ? ' ↑' : ''} · depth ${status.depth.toFixed(1)} m · ${status.speed.toFixed(1)} m/s`
+    this.dom.textContent = `Air ${pct}%${status.refilling ? ' ↑' : ''} · depth ${status.depth.toFixed(1)} m · ${status.speed.toFixed(1)} m/s${status.skill ? ` · ${status.skill}` : ''}${status.score !== undefined ? ` · ★ ${status.score}` : ''}`
     this.dom.classList.toggle('low', low)
 
     const ctx = this.ctx
@@ -82,8 +85,18 @@ export class WristComputer {
     ctx.fillText(`${status.speed.toFixed(1)}m/s`, 170, 112)
     ctx.font = '20px monospace'
     ctx.fillStyle = '#8fc9dd'
-    ctx.fillText('DEPTH', 20, 142)
-    ctx.fillText('SPEED', 170, 142)
+    if (status.skill || status.score !== undefined) {
+      // Skill cooldown and team score replace the labels once a level is under way.
+      ctx.fillStyle = status.skill?.endsWith('READY') ? '#7dffa8' : '#ffd166'
+      ctx.fillText(status.skill ?? '', 20, 142)
+      ctx.fillStyle = '#f2c230'
+      ctx.textAlign = 'right'
+      ctx.fillText(status.score !== undefined ? `★ ${status.score}` : '', 300, 142)
+      ctx.textAlign = 'left'
+    } else {
+      ctx.fillText('DEPTH', 20, 142)
+      ctx.fillText('SPEED', 170, 142)
+    }
     this.texture.needsUpdate = true
   }
 }

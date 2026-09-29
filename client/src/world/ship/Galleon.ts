@@ -7,6 +7,8 @@ export interface GalleonOptions {
   hullColor?: number
   sailColor?: number
   flag?: FlagKind
+  /** Build the captain's cabin as a room you can swim into (the wreck), not a solid block. */
+  hollowCabin?: boolean
 }
 
 /** Deck outline (x, z) in ship-local metres, starboard side, stern → bow. Mirrored for port. */
@@ -24,6 +26,52 @@ export const BOW_Z = -14.5
 /** The captain's cabin occupies the stern from here back. */
 export const CABIN_FRONT_Z = 9.6
 const HULL_DEPTH = 4
+
+/** Axis-aligned box in ship-local space, for collisions. */
+export interface ShipBox {
+  center: THREE.Vector3
+  half: THREE.Vector3
+}
+
+const CABIN_HALF_WIDTH = 3.5
+const CABIN_HEIGHT = 2.6
+const WALL = 0.15
+const DOOR_HALF_WIDTH = 0.55
+const DOOR_HEIGHT = 1.9
+
+/** The inside of the captain's cabin (ship-local), for "the diver is in the cabin" checks. */
+export const CABIN_INTERIOR: ShipBox = {
+  center: new THREE.Vector3(0, DECK_Y + CABIN_HEIGHT / 2, (CABIN_FRONT_Z + STERN_Z) / 2),
+  half: new THREE.Vector3(CABIN_HALF_WIDTH - WALL, CABIN_HEIGHT / 2, (STERN_Z - CABIN_FRONT_Z) / 2 - WALL),
+}
+
+const box = (cx: number, cy: number, cz: number, hx: number, hy: number, hz: number): ShipBox => ({
+  center: new THREE.Vector3(cx, cy, cz),
+  half: new THREE.Vector3(hx, hy, hz),
+})
+
+/** Collision boxes for a wreck with a hollow cabin: hull sections, cabin walls with a doorway, roof. */
+export function wreckColliders(): ShipBox[] {
+  const hullY = DECK_Y - 2.15
+  const midZ = (CABIN_FRONT_Z + STERN_Z) / 2
+  const halfDepth = (STERN_Z - CABIN_FRONT_Z) / 2
+  const frontZ = CABIN_FRONT_Z + WALL / 2
+  const sideHalf = (CABIN_HALF_WIDTH - DOOR_HALF_WIDTH) / 2
+  return [
+    box(0, hullY, 8.5, 3.7, 2.15, 4.5),
+    box(0, hullY, -1, 3.8, 2.15, 5),
+    box(0, hullY, -8.5, 2.8, 2.15, 2.5),
+    box(0, hullY, -12.75, 1.3, 2.15, 1.75),
+    box(0, DECK_Y + CABIN_HEIGHT / 2, STERN_Z - WALL / 2, CABIN_HALF_WIDTH, CABIN_HEIGHT / 2, WALL / 2),
+    box(CABIN_HALF_WIDTH - WALL / 2, DECK_Y + CABIN_HEIGHT / 2, midZ, WALL / 2, CABIN_HEIGHT / 2, halfDepth),
+    box(-(CABIN_HALF_WIDTH - WALL / 2), DECK_Y + CABIN_HEIGHT / 2, midZ, WALL / 2, CABIN_HEIGHT / 2, halfDepth),
+    box(0, DECK_Y + CABIN_HEIGHT + WALL / 2, midZ, CABIN_HALF_WIDTH + 0.15, WALL / 2, halfDepth + 0.15),
+    box(-(DOOR_HALF_WIDTH + sideHalf), DECK_Y + CABIN_HEIGHT / 2, frontZ, sideHalf, CABIN_HEIGHT / 2, WALL / 2),
+    box(DOOR_HALF_WIDTH + sideHalf, DECK_Y + CABIN_HEIGHT / 2, frontZ, sideHalf, CABIN_HEIGHT / 2, WALL / 2),
+    box(0, DECK_Y + (DOOR_HEIGHT + CABIN_HEIGHT) / 2, frontZ, DOOR_HALF_WIDTH, (CABIN_HEIGHT - DOOR_HEIGHT) / 2, WALL / 2),
+  ]
+}
+
 
 /** Half the deck width at ship-local z. */
 export function halfWidthAt(z: number): number {
@@ -65,7 +113,7 @@ export class Galleon {
     const hull = new THREE.Mesh(makeHullGeometry(), wood)
     const wale = new THREE.Mesh(makeWaleGeometry(), trim)
     const deck = new THREE.Mesh(makeDeckGeometry(), new THREE.MeshStandardMaterial({ map: makePlankTexture(), roughness: 0.9 }))
-    structure.add(hull, wale, deck, makeRails(darkWood), makeCabin(wood, darkWood, trim))
+    structure.add(hull, wale, deck, makeRails(darkWood), options.hollowCabin ? makeHollowCabin(wood, darkWood, trim) : makeCabin(wood, darkWood, trim))
     this.shake.add(structure)
 
     this.buildMast(this.mainmast, 0, 16, 5.5, darkWood, sail)
@@ -231,6 +279,21 @@ function makeCabin(wood: THREE.Material, dark: THREE.Material, trim: THREE.Mater
   door.position.set(0, DECK_Y + 0.95, CABIN_FRONT_Z - 0.02)
   cabin.add(body, roof, door)
   // One window to starboard; the port side of the wall holds the dart board and its slate.
+  const window = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.06), trim)
+  window.position.set(2.2, DECK_Y + 1.5, CABIN_FRONT_Z - 0.02)
+  cabin.add(window)
+  return cabin
+}
+
+/** The wreck's cabin: walls, roof and an open doorway (the door's long gone). */
+function makeHollowCabin(wood: THREE.Material, dark: THREE.Material, trim: THREE.Material): THREE.Group {
+  const cabin = new THREE.Group()
+  for (const b of wreckColliders().slice(4)) {
+    const isRoof = b.center.y > DECK_Y + CABIN_HEIGHT
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.half.x * 2, b.half.y * 2, b.half.z * 2), isRoof ? dark : wood)
+    mesh.position.copy(b.center)
+    cabin.add(mesh)
+  }
   const window = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.06), trim)
   window.position.set(2.2, DECK_Y + 1.5, CABIN_FRONT_Z - 0.02)
   cabin.add(window)

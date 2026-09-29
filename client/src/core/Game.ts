@@ -10,7 +10,8 @@ import { FpsOverlay } from '../ui/FpsOverlay'
 import { Hud } from '../ui/Hud'
 import { WristComputer } from '../ui/WristComputer'
 import type { Settings } from './settings'
-import type { GameContext, RunRecord, Stage } from './Stage'
+import { Inventory } from '../systems/Inventory'
+import type { GameContext, PartyState, RunRecord, Stage } from './Stage'
 
 const FADE_SECONDS = 0.6
 
@@ -30,6 +31,8 @@ export class Game implements GameContext {
   readonly wrist: WristComputer
   readonly desktop: DesktopControls
   readonly record: RunRecord = { whoShotFirst: null, clayHits: 0, clayShots: 0, bullseyeBeforeBattle: false }
+  // Single player plays the Strongman until character selection arrives with the lobby.
+  readonly party: PartyState = { character: 'strongman', inventory: new Inventory(), score: 0, hasMap: false, mapPieces: [1], checkpoint: 'intro' }
   stage: Stage | null = null
 
   private readonly timer = new THREE.Timer()

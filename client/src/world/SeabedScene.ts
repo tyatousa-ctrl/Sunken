@@ -30,6 +30,7 @@ export function sandHeight(x: number, z: number): number {
 
 export class SeabedScene {
   readonly rocks: RockCollider[] = []
+  private rockMesh!: THREE.InstancedMesh
   private readonly particles: THREE.Points
   private readonly swayUniform = { value: 0 }
   private readonly godRayTime = { value: 0 }
@@ -87,7 +88,7 @@ export class SeabedScene {
     const random = rng(7)
     const material = new THREE.MeshStandardMaterial({ color: 0x2c2a2b, roughness: 0.95, flatShading: true })
     applyCaustics(material, 0.7)
-    const mesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 1), material, ROCKS)
+    const mesh = (this.rockMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 1), material, ROCKS))
     const m = new THREE.Matrix4()
     const q = new THREE.Quaternion()
     const s = new THREE.Vector3()
@@ -103,6 +104,18 @@ export class SeabedScene {
       this.rocks.push({ center: p.clone(), radius: ((s.x + s.y + s.z) / 3) * 0.9 })
     }
     return mesh
+  }
+
+  /** Remove rocks that would poke through something placed on the seabed (e.g. the wreck). */
+  removeRocks(inside: (center: THREE.Vector3, radius: number) => boolean): void {
+    const hidden = new THREE.Matrix4().makeScale(0, 0, 0)
+    this.rocks.forEach((rock, i) => {
+      if (rock.radius > 0 && inside(rock.center, rock.radius)) {
+        this.rockMesh.setMatrixAt(i, hidden)
+        rock.radius = 0
+      }
+    })
+    this.rockMesh.instanceMatrix.needsUpdate = true
   }
 
   private makeSeagrass(): THREE.InstancedMesh {

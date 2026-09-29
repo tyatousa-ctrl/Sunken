@@ -53,6 +53,12 @@ export class Hud {
     this.queue.push({ text, speaker, until: seconds })
   }
 
+  /** Show a line right away, replacing the current one (feedback to something the player just did). */
+  now(text: string, seconds = 3, speaker?: string): void {
+    this.subtitle = { text, speaker, until: this.clock + seconds }
+    this.dirty = true
+  }
+
   /** Persistent instruction line; empty string clears it. */
   setPrompt(text: string): void {
     if (text === this.prompt) return

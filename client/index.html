@@ -9,9 +9,16 @@
     <div id="app"></div>
     <div id="intro">
       <h1>Sunken Sicily</h1>
-      <p>Co-op VR scuba treasure hunt · intro sequence</p>
+      <p>Co-op VR scuba treasure hunt · Level 1</p>
       <p id="no-xr" class="note" hidden>This device can't do VR. To play, open this link in the <b>Meta Quest Browser</b> on your headset. You can still look around here.</p>
       <div class="options">
+        <label>Start at
+          <select id="opt-start">
+            <option value="intro">The ship (full game)</option>
+            <option value="level1">Level 1: The Sinking Galleon</option>
+            <option value="sandbox">Movement sandbox</option>
+          </select>
+        </label>
         <label><input type="checkbox" id="opt-fps" /> Show FPS overlay</label>
         <label><input type="checkbox" id="opt-seated" /> Seated mode</label>
         <label><input type="checkbox" id="opt-drunkfx" /> Drunk visual effects</label>
@@ -40,8 +47,11 @@
           <li><b>Swim:</b> hold grip and pull your arms through the water</li>
           <li><b>Bubble jets:</b> trigger shoots bubbles from that hand and pushes you the other way; both hands for a boost, opposite directions to spin</li>
           <li><b>Underwater sticks:</b> left drifts where you look · right turns, up/down to rise and sink</li>
+          <li><b>Backpack:</b> A/X, or grip over your shoulder, opens it; let go of an item over it (or over your shoulder) to stow it; grip a slot to take one out</li>
+          <li><b>Treasure map:</b> click the left thumbstick to hold it up; turn it over for notes; grip it with the other hand and pull to zoom</li>
+          <li><b>Skill (Strongman):</b> B heaves something heavy aside (20 s to recover)</li>
           <li><b>Air:</b> watch your left wrist; refill in the bubbling vent or grab the yellow tank</li>
-          <li><b>Desktop:</b> drag to look, WASD move, Space jump/rise, Q sink, Shift jets; your hand: E grab/drop, F trigger, R reload</li>
+          <li><b>Desktop:</b> drag to look, WASD move, Space jump/rise, Q sink, Shift jets; your hand: E grab/drop, F trigger, R reload / backpack, B skill, M map</li>
         </ul>
       </details>
     </div>

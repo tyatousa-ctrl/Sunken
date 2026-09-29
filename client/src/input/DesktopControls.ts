@@ -3,7 +3,8 @@ import { Hand, type VirtualPad } from './Hand'
 
 // Keyboard + mouse fallback for testing without a headset. Drag to look; WASD to walk/drift;
 // Space jumps on deck (rises underwater), Q sinks; Shift fires bubble jets.
-// A virtual right hand floats in front of the camera: F = trigger, E = grip (toggle), R = A button.
+// A virtual right hand floats in front of the camera: F = trigger, E = grip (toggle), R = A button
+// (reload / backpack), B = B button (skill), M = thumbstick click (map).
 export class DesktopControls {
   readonly move = new THREE.Vector2()
   rise = 0
@@ -16,7 +17,7 @@ export class DesktopControls {
   private readonly keys = new Set<string>()
   private readonly pressed = new Set<string>()
   private pitch = 0
-  private readonly pad: VirtualPad = { trigger: 0, grip: 0, stick: new THREE.Vector2(), primary: false, secondary: false }
+  private readonly pad: VirtualPad = { trigger: 0, grip: 0, stick: new THREE.Vector2(), primary: false, secondary: false, stickClick: false }
 
   constructor(
     element: HTMLElement,
@@ -58,6 +59,8 @@ export class DesktopControls {
     this.pad.trigger = k.has('KeyF') ? 1 : 0
     if (this.pressed.has('KeyE')) this.pad.grip = this.pad.grip > 0.5 ? 0 : 1
     this.pad.primary = k.has('KeyR')
+    this.pad.secondary = k.has('KeyB')
+    this.pad.stickClick = k.has('KeyM')
     this.pressed.clear()
   }
 }

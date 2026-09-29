@@ -5,7 +5,7 @@ import type { Bubbles } from '../world/Bubbles'
 import { AirTank } from './AirTank'
 import { SwimPhysics, type HandSample, type SwimResult } from './SwimPhysics'
 import type { ComfortVignette } from './ComfortVignette'
-import type { PlayerEnvironment, SwimEnvironment, WalkEnvironment } from './environment'
+import type { BoxCollider, PlayerEnvironment, SwimEnvironment, WalkEnvironment } from './environment'
 
 export type TurnMode = 'snap' | 'smooth'
 
@@ -53,6 +53,9 @@ export class Player {
   private readonly drift = new THREE.Vector3()
   private readonly forward = new THREE.Vector3()
   private readonly right = new THREE.Vector3()
+  private readonly boxLocal = new THREE.Vector3()
+  private readonly boxClosest = new THREE.Vector3()
+  private readonly boxOut = new THREE.Vector3()
 
   constructor(
     private readonly rig: THREE.Group,
@@ -324,6 +327,8 @@ export class Player {
       if (dist < min && dist > 1e-4) push.addScaledVector(offset, (min - dist) / dist)
     }
 
+    for (const box of env.boxes) this.pushOutOfBox(head, box, push)
+
     const horizontal = Math.hypot(head.x, head.z)
     if (horizontal > env.radius) {
       push.x -= (head.x / horizontal) * (horizontal - env.radius)
@@ -336,6 +341,31 @@ export class Player {
     const normal = push.normalize()
     const into = this.physics.velocity.dot(normal)
     if (into < 0) this.physics.velocity.addScaledVector(normal, -into)
+  }
+
+  /** Keep the head sphere out of an oriented box: push along the shortest way out. */
+  private pushOutOfBox(head: THREE.Vector3, box: BoxCollider, push: THREE.Vector3): void {
+    const local = this.boxLocal.copy(head).add(push).applyMatrix4(box.inverse)
+    const h = box.half
+    const closest = this.boxClosest.set(
+      THREE.MathUtils.clamp(local.x, -h.x, h.x),
+      THREE.MathUtils.clamp(local.y, -h.y, h.y),
+      THREE.MathUtils.clamp(local.z, -h.z, h.z),
+    )
+    const out = this.boxOut.subVectors(local, closest)
+    const dist = out.length()
+    if (dist >= HEAD_CLEARANCE) return
+    if (dist > 1e-4) {
+      out.multiplyScalar((HEAD_CLEARANCE - dist) / dist)
+    } else {
+      // Centre inside the box: leave through the nearest face.
+      const gaps = [h.x - Math.abs(local.x), h.y - Math.abs(local.y), h.z - Math.abs(local.z)]
+      const axis = gaps.indexOf(Math.min(...gaps))
+      out.set(0, 0, 0).setComponent(axis, Math.sign(local.getComponent(axis) || 1) * (gaps[axis] + HEAD_CLEARANCE))
+    }
+    // Box-local offset → world (rotation only; transformDirection normalises, so keep the length).
+    const length = out.length()
+    push.addScaledVector(out.transformDirection(box.matrix), length)
   }
 
   private updateAir(dt: number, env: SwimEnvironment, thrust: number[]): void {
@@ -387,11 +417,15 @@ export class Player {
     this.exhaleTimer += dt
     if (!this.bubbles || this.exhaleTimer < EXHALE_INTERVAL) return
     this.exhaleTimer = 0
-    const origin = this.camera.getWorldPosition(this.v1)
+    // The regulator vents to either side of the mouth, so the bubbles rise past the ears, not the eyes.
     this.camera.getWorldDirection(this.v2)
-    origin.addScaledVector(this.v2, 0.12)
-    origin.y -= 0.05
-    this.bubbles.emit(origin, this.v2.set(0, 1, 0), 22, 0.5, 1.2)
+    this.right.crossVectors(this.v2, this.camera.up).normalize()
+    for (const side of [-1, 1]) {
+      const origin = this.camera.getWorldPosition(this.v1).addScaledVector(this.right, side * 0.14).addScaledVector(this.v2, 0.04)
+      origin.y -= 0.1
+      this.bubbles.emit(origin, this.v2.copy(this.right).multiplyScalar(side * 0.4).setY(1), 11, 0.6, 0.6)
+      this.camera.getWorldDirection(this.v2)
+    }
   }
 }
 

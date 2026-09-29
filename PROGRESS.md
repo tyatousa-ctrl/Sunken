@@ -9,7 +9,7 @@ Tracks milestones from `BRIEF.md`, decisions, and placeholders to replace later.
 | 1 | Setup: Vite + Three.js + WebXR "Enter VR", controllers visible, FPS overlay, server hosting decided | Built; waiting for Quest test |
 | 2 | Movement sandbox: fog, caustics, arm swimming, bubble jets, air gauge, grab, comfort vignette | Built and tested in an emulated Quest 3; waiting for real-headset test and tuning |
 | 3 | Intro sequence: galleon deck, clay-shooting fake-out, beer barrel, darts, cannon attack, gear up, sinking, dive transition | Built and tested end to end in an emulated Quest 3; waiting for real-headset test |
-| 4 | Level 1 + systems | Not started |
+| 4 | Level 1 + systems: backpack, map pieces, first riddle, Strongman skill, checkpoints | Built and tested end to end in an emulated Quest 3; waiting for real-headset test |
 | 5 | Multiplayer | Not started |
 | 6 | Bots + all classes + magic | Not started |
 | 7 | Levels 2–5 + finale, polish | Not started |
@@ -102,6 +102,31 @@ The deck layout changed to fit them: the captain's table (with the map) moved fo
 
 Still not in from the fake-out: the spyglass nudge (the other three nudges are in), the "Pull!" crew voice (subtitles only), slurred voice chat (no voice chat until Milestone 5) and double vision (would need a post-processing pass that costs frame rate on Quest; fog and haze stand in for it). Bots at the barrel and the board come with Milestone 6.
 
+## Milestone 4: Level 1 and the core systems
+
+After going overboard, the galleon sinks past you and settles on the seabed: that's Level 1, The Sinking Galleon. The start screen now has **Start at** (the ship, Level 1, or the sandbox), so you can jump straight in on the Quest.
+
+**The riddle** (`src/data/levels/level1.json`): *"Where the captain slept, the key is kept, beneath the one who never wept."*
+1. Swim in through the doorway of the captain's cabin at the stern (the wreck's cabin is a real room now, with solid walls and hull).
+2. Beside the bunk lies the ship's old stone figurehead. Grabbing her does nothing ("she won't budge"); the Strongman presses **B** next to her to heave her aside (20 s to recover, shown on the wrist).
+3. A brass key lay underneath. Carry it, or stow it in the backpack.
+4. Touch the captain's chest lock with the key in hand, or with an empty hand if the key's in your backpack. The lid opens.
+5. Take map piece II. The riddle is solved: the iron grille in the stone arch at the edge of the reef sinks into the sand, and the map now shows piece II in place and Level 2's riddle.
+6. Swim through the arch: level summary (coins, gems, score, time) and a checkpoint saved on this device.
+
+**Systems**
+- **Backpack** (`ui/Backpack.ts`, `systems/Inventory.ts`): 12 slots in a floating 3×4 grid. Open with A/X, or by gripping over your shoulder. Let go of an item over the grid, or over your shoulder, to stow it; grip a filled cell to take one out. Coins, gems, shells and runes stack.
+- **Treasure map** (`ui/MapView.ts`): left thumbstick click holds it up in your left hand. The current riddle is inked on the front, found pieces fill their torn holes, and hints are written on the back as they unlock. Grip it with the other hand and pull apart to zoom.
+- **Hints** (`systems/LevelProgress.ts`): three tiers from the level file, one per minute you're stuck (progress resets the clock). After two minutes without progress, a compass needle on the map points at whatever the next step needs.
+- **Collectibles**: 20 coins (12 on and in the wreck, 3 of them in the chest, 8 on the seabed) and 3 secret gems (the crow's nest, a corner of the cabin, and a far corner of the seabed). Swim into them or grab them; coins +10, gems +50 to the team score.
+- **Skill**: the Strongman's heave (B). Single player plays the Strongman until character selection comes with the lobby; the other three classes' cooldowns are already defined.
+- **Checkpoints**: running out of air returns you to the level's checkpoint (moved to the arch once the riddle's solved); finishing the level saves progress (`systems/save.ts`).
+- **Collisions**: oriented box colliders for the wreck's hull and cabin walls, spheres for the main mast.
+
+**How it was tested**
+- `npm test`: 55 unit tests, now including the backpack (stacking, 12-slot limit, using a key), level progress (steps only in order, three hints a minute apart, progress resetting the hint clock, the compass at two minutes), the level file's contents, and skill cooldowns.
+- End-to-end in an emulated Quest 3, with real controller input throughout: map opens on the left stick click, a coin is collected by swimming into it, the backpack opens on A, a head pushed into the cabin wall is pushed back out, entering the cabin completes the first step, grabbing the figurehead gives the "won't budge" feedback, B heaves her aside and reveals the key, the key is taken and stowed over the shoulder, an empty hand on the lock uses the key from the backpack, the map piece solves the level and opens the gate, and swimming through the arch completes the level and writes the save.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.
@@ -112,6 +137,8 @@ Still not in from the fake-out: the spyglass nudge (the other three nudges are i
 - **2026-09-29 — Darts mode.** The brief's "First to 501" is implemented as standard 501 counting down (first to reach zero wins).
 - **2026-09-29 — Drunk effects and comfort.** No double vision: it needs a full-screen post-processing pass that would cost frame rate on Quest. Fog, an amber haze and input wobble carry the effect instead. Walking wobble only applies while the stick is pushed, so you never move on your own.
 - **2026-09-29 — Comfort on a sinking ship.** The player's view stays level while the deck tilts under them; only the ground height follows the deck. Cannon hits shake the ship's visuals, not the player.
+- **2026-09-29 — Class in single player.** Until the lobby's character board exists (Milestones 5–6), the local player is the Strongman, since Level 1's riddle needs him.
+- **2026-09-29 — Level 1's exit.** Level 2 isn't built yet, so the level ends by swimming through the reef arch; the save records `level2` as the next checkpoint.
 - **2026-09-29 — Repo layout.** One root `package.json` with `client/` (Vite root) and `server/`, so Render builds and runs everything with `npm run build` / `npm start`.
 
 ## Placeholders to replace
@@ -122,3 +149,4 @@ Still not in from the fake-out: the spyglass nudge (the other three nudges are i
 - Sounds are synthesized in code (ambience, jets, gunshot with cliff echo, cannon, clay crack, splashes, clicks); recorded CC0 audio comes in the polish milestone. There's no music yet.
 - The galleon, the enemy ship, the crew, the parrot, the blunderbusses, the gear and the coast are all built from primitives.
 - Voice lines are subtitles only.
+- The wreck interior (bunk, table, figurehead, chest), the key, coins, gems, map piece and the reef arch are primitives.

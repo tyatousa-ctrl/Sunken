@@ -14,7 +14,7 @@ import { GearRack, TABLE_POSITION, type GearPiece } from '../intro/GearRack'
 import { Shotgun } from '../intro/Shotgun'
 import { AboveWater } from '../world/above/Coast'
 import { BOW_Z, CABIN_FRONT_Z, DECK_Y, Galleon, STERN_Z, halfWidthAt } from '../world/ship/Galleon'
-import { DiveStage } from './DiveStage'
+import { Level1Stage } from './Level1Stage'
 
 /** The "harmless merchant" anchored in the bay, ~150 m off the starboard bow. */
 const ENEMY_POSITION = new THREE.Vector3(110, 0, -100)
@@ -372,7 +372,7 @@ export class IntroStage implements Stage {
     this.applyDrunkEffects()
     game.audio.play('bigSplash')
     game.hud.clear()
-    game.goTo(() => new DiveStage(game, 'shipwreck'))
+    game.goTo(() => new Level1Stage(game, true))
   }
 
   // ---- World ------------------------------------------------------------------------------------
