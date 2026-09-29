@@ -44,6 +44,7 @@ const OBSTACLES: Obstacle[] = [
 // the ship in the bay starts the real game: she runs up a black flag and opens fire, our ship sinks,
 // and the crew has to gear up and go over the side.
 export class IntroStage implements Stage {
+  readonly id = 'intro'
   readonly root = new THREE.Group()
   private readonly ship = new Galleon({ flag: 'crew' })
   private readonly enemy = new Galleon({ hullColor: 0x2e2620, sailColor: 0xcfc6b2, flag: 'merchant' })
@@ -70,6 +71,8 @@ export class IntroStage implements Stage {
   private nudges = 0
   private broadsideYaw = 0
   private railsWereOpen = false
+  private readonly unsubscribe: (() => void)[] = []
+  private boardTimer = 0
   private readonly v = new THREE.Vector3()
   private readonly v2 = new THREE.Vector3()
 
@@ -119,6 +122,7 @@ export class IntroStage implements Stage {
     this.baseFog = { near: fog.near, far: fog.far }
 
     game.player.enter(walk, new THREE.Vector3(0, DECK_Y, 3), Math.PI)
+    this.connectNet()
     game.audio.setEnvironment('air')
     game.wrist.setVisible(false)
     game.vignette.setMask(false)
@@ -141,6 +145,7 @@ export class IntroStage implements Stage {
     this.above.update(dt, elapsed, game.halfHeight)
     for (const p of [this.smoke, this.fire, this.debris, this.splash]) p.update(dt, game.halfHeight)
 
+    this.syncNet(dt)
     if (this.phase === 'fakeout') this.updateFakeout(dt)
     else if (this.phase === 'attack') this.updateAttack(dt, elapsed)
 
@@ -148,6 +153,7 @@ export class IntroStage implements Stage {
   }
 
   exit(): void {
+    for (const off of this.unsubscribe) off()
     this.game.hud.clear()
     this.game.vignette.drunk = 0
     this.game.vignette.blackout = 0
@@ -157,8 +163,8 @@ export class IntroStage implements Stage {
     disposeTree(this.root)
   }
 
-  /** Debug/test hook: start the attack as if the ship had been shot. */
-  startAttack(shooter = 'You'): void {
+  /** Debug/test hook: start the attack as if the ship had been shot. `secondsAgo` catches a late joiner up. */
+  startAttack(shooter = 'You', secondsAgo = 0): void {
     if (this.phase !== 'fakeout') return
     const { game } = this
     this.phase = 'attack'
@@ -180,6 +186,61 @@ export class IntroStage implements Stage {
       hands: () => game.hands,
       head: () => game.camera.getWorldPosition(this.v2),
     })
+    this.attack.t = Math.max(0, secondsAgo)
+    if (shooter !== 'You') game.hud.now(`${shooter} shot the ship in the bay!`, 3)
+  }
+
+  // ---- Crew play ---------------------------------------------------------------------------------
+
+  private connectNet(): void {
+    const net = this.game.net
+    if (!net) return
+    const on = <T,>(type: string, cb: (msg: T) => void) => this.unsubscribe.push(net.on<T>(type, cb))
+    this.guns.forEach((gun, i) => {
+      const id = `gun${i}`
+      gun.onGrabbed = () => net.send('claim', { id })
+      gun.onReleased = () => net.send('release', { id })
+    })
+    on<{ id: string }>('claimDenied', (msg) => {
+      const gun = this.guns[Number(msg.id.replace('gun', ''))]
+      if (gun && msg.id.startsWith('gun')) {
+        gun.forceDrop()
+        this.game.hud.now('Someone beat you to that gun.', 2)
+      }
+    })
+    on<{ id: string }>('fired', (msg) => this.guns[Number(msg.id.replace('gun', ''))]?.playRemoteFire())
+    on<{ id: number; seed: number; delay: number }>('clay', (msg) => {
+      if (this.phase !== 'fakeout') return
+      this.range.launchSeeded(msg.id, msg.seed, msg.delay)
+      this.game.hud.say('Pull!', 1.2, 'Salvo')
+    })
+    on<{ id: number }>('clayBroken', (msg) => this.range.shatterById(msg.id))
+    on<{ at: number; shooter: string }>('attack', (msg) => this.joinAttack(msg.at, msg.shooter))
+    // Joining a crew that's already under attack (or past it): catch up.
+    if (net.state?.attackAt) this.joinAttack(net.state.attackAt, net.state.shooter)
+  }
+
+  private joinAttack(at: number, shooter: string): void {
+    const net = this.game.net!
+    const name = shooter === net.me()?.name ? 'You' : shooter
+    if (name === 'You') this.game.record.whoShotFirst = 'You'
+    this.startAttack(name, (net.serverNow() - at) / 1000)
+    if (name !== 'You') this.game.record.whoShotFirst = shooter
+  }
+
+  private syncNet(dt: number): void {
+    const { net, remote } = this.game
+    if (!net || !remote) return
+    // Guns held by someone else ride in their right hand.
+    this.guns.forEach((gun, i) => {
+      const owner: string | undefined = net.state?.claims?.get(`gun${i}`)
+      gun.setRemoteHand(owner && owner !== net.sessionId ? remote.hand(owner, 1) : null)
+    })
+    this.boardTimer -= dt
+    if (this.boardTimer <= 0) {
+      this.boardTimer = 0.5
+      this.range.setShooters(net.roster().map((p) => ({ name: p.sessionId === net.sessionId ? `${p.name} (you)` : p.name, color: p.color, hits: p.hits, shots: p.shots })))
+    }
   }
 
   // ---- Fake-out ---------------------------------------------------------------------------------
@@ -215,20 +276,33 @@ export class IntroStage implements Stage {
   }
 
   private pull(): void {
-    this.game.hud.say('Pull!', 1.2, 'Salvo')
     this.crew.get('Salvo').group.getWorldPosition(this.v)
     this.game.audio.play('whistle', this.v.setY(this.v.y + 1.6))
-    this.range.pull(Math.random() < 0.3 ? 2 : 1)
     this.pullCooldown = PULL_COOLDOWN + Math.random() * 1.5
+    // In a crew there's one thrower: the server launches the clays for everybody.
+    if (this.game.net) {
+      this.game.net.send('pull')
+      return
+    }
+    this.game.hud.say('Pull!', 1.2, 'Salvo')
+    this.range.pull(Math.random() < 0.3 ? 2 : 1)
   }
 
   private onFire(origin: THREE.Vector3, directions: THREE.Vector3[]): void {
     const { game } = this
+    const net = game.net
     const you = this.range.shooters[0]
-    const hits = this.range.shoot(you, origin, directions)
-    game.record.clayShots = you.shots
-    game.record.clayHits = you.hits
-    if (hits > 0) game.hands.forEach((h) => h.held && h.pulse(0.2, 30))
+    const hits = this.range.shoot(you, origin, directions, !net)
+    if (net) {
+      net.send('shot')
+      const held = this.guns.findIndex((g) => g.held)
+      if (held >= 0) net.send('fired', { id: `gun${held}` })
+      for (const id of hits) net.send('clayHit', { id })
+    } else {
+      game.record.clayShots = you.shots
+      game.record.clayHits = you.hits
+    }
+    if (hits.length > 0) game.hands.forEach((h) => h.held && h.pulse(0.2, 30))
 
     // Pellets that land in the sea nearby kick up little splashes.
     let splashes = 0
@@ -247,7 +321,9 @@ export class IntroStage implements Stage {
       this.raycaster.set(origin, dir)
       this.raycaster.far = 400
       if (this.raycaster.intersectObjects(this.enemy.hitMeshes, false).length > 0) {
-        this.startAttack('You')
+        // In a crew the server decides who was first; the attack starts when it says so.
+        if (game.net) game.net.send('hitShip')
+        else this.startAttack('You')
         return
       }
     }

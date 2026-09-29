@@ -7,8 +7,8 @@ export default defineConfig({
     outDir: fileURLToPath(new URL('../dist/client', import.meta.url)),
     emptyOutDir: true,
     target: 'es2022',
-    // three.js alone is ~650 kB (165 kB gzipped); well inside the 40 MB initial-download budget.
-    chunkSizeWarningLimit: 1000,
+    // three.js + the Colyseus SDK are ~1 MB (280 kB gzipped); well inside the 40 MB initial-download budget.
+    chunkSizeWarningLimit: 1500,
   },
   server: { host: true },
 })

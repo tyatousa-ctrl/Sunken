@@ -49,6 +49,7 @@ const SEABED_GEMS: [number, number][] = [[-26, 8]]
 // first riddle leads into the captain's cabin, where the Strongman heaves the stone figurehead aside,
 // the key underneath opens the captain's chest, and map piece II opens the way on.
 export class Level1Stage implements Stage {
+  readonly id = 'level1'
   readonly root = new THREE.Group()
   readonly progress = new LevelProgress(LEVEL)
   private readonly bubbles = new Bubbles(SURFACE_Y)
@@ -56,7 +57,10 @@ export class Level1Stage implements Stage {
   private readonly boxes: BoxCollider[] = []
   private readonly wreck = new Galleon({ hollowCabin: true })
   private readonly skill = new SkillCooldown(SKILLS.strongman.cooldown)
-  private readonly collectibles: { item: LooseItem; kind: ItemKind }[] = []
+  private readonly collectibles: { item: LooseItem; kind: ItemKind; id: string }[] = []
+  private readonly unsubscribe: (() => void)[] = []
+  /** Applying steps that already happened before we joined: no announcements. */
+  private catchingUp = false
   private world!: SeabedScene
   private grab!: GrabSystem
   private cabin!: CaptainsCabin
@@ -142,6 +146,7 @@ export class Level1Stage implements Stage {
       this.onSettled()
     }
     game.player.checkpoint.copy(new THREE.Vector3(0, 0.8, 2))
+    this.connectNet()
   }
 
   update(dt: number, elapsed: number): void {
@@ -163,6 +168,7 @@ export class Level1Stage implements Stage {
     this.updateCollectibles(dt)
     this.updatePuzzle(dt)
 
+    if (game.net) game.party.score = game.net.state?.teamScore ?? game.party.score
     game.wrist.update(dt, {
       air: game.player.air.fraction,
       depth: game.player.depth,
@@ -174,6 +180,7 @@ export class Level1Stage implements Stage {
   }
 
   exit(): void {
+    for (const off of this.unsubscribe) off()
     this.game.scene.remove(this.root)
     disposeTree(this.root)
   }
@@ -222,7 +229,6 @@ export class Level1Stage implements Stage {
       return
     }
     for (const h of game.hands) h.pulse(1, 300)
-    this.cabin.lift()
     this.step('enterCabin')
     this.step('liftFigurehead')
     game.hud.now('You heave the stone maiden aside... something glints where she lay.', 4)
@@ -249,10 +255,7 @@ export class Level1Stage implements Stage {
     const piece = new LooseItem(this.cabin.mapPiece, {
       radius: 0.12,
       settle: 'home',
-      onGrab: (hand, item) => {
-        item.enabled = false
-        item.object.visible = false
-        this.game.party.mapPieces.push(LEVEL.reward.mapPiece)
+      onGrab: (hand) => {
         hand.pulse(0.8, 150)
         this.game.audio.play('pop')
         this.step('takeMapPiece')
@@ -309,16 +312,90 @@ export class Level1Stage implements Stage {
 
   private unlockChest(hand: Hand): void {
     hand.pulse(0.6, 80)
-    this.cabin.unlock()
     this.step('openChest')
     this.game.hud.now('The lock gives with a clunk. The lid creaks open.', 3)
   }
 
-  /** Complete a step; returns whether it counted (steps count in order). */
+  /**
+   * Ask for a riddle step. Solo, it happens at once; in a crew the server checks the order and
+   * everyone applies it together. Returns whether it counted locally (always false in a crew).
+   */
   private step(id: string): boolean {
+    if (this.game.net) {
+      if (this.progress.nextStep?.id === id) this.game.net.send('act', { level: LEVEL.id, step: id })
+      return false
+    }
+    return this.applyStep(id)
+  }
+
+  /** A step happened (here, or anywhere in the crew): update the world. */
+  private applyStep(id: string, by?: string): boolean {
     const events = this.progress.complete(id)
-    this.onProgress(events)
-    return events.length > 0
+    if (events.length === 0) return false
+    const who = by && this.game.net && by !== this.game.net.sessionId ? this.game.net.roster().find((p) => p.sessionId === by)?.name : null
+    if (id === 'liftFigurehead') {
+      this.cabin.lift()
+      if (who && !this.catchingUp) this.game.hud.now(`${who} heaved the figurehead aside!`, 3)
+    }
+    if (id === 'takeKey' && by && this.game.net && by !== this.game.net.sessionId) {
+      // Someone else has the key now; ours disappears so there's only ever one.
+      this.cabin.keyTaken = true
+      if (this.keyItem.heldBy) this.grab.drop(this.keyItem.heldBy)
+      this.keyItem.goHome()
+      this.keyItem.enabled = false
+      this.keyItem.object.visible = false
+      if (who && !this.catchingUp) this.game.hud.now(`${who} took the key.`, 3)
+    }
+    if (id === 'openChest') {
+      this.cabin.unlock()
+      if (who && !this.catchingUp) this.game.hud.now(`${who} opened the captain's chest.`, 3)
+    }
+    if (id === 'takeMapPiece') {
+      this.cabin.mapPiece.visible = false
+      if (!this.game.party.mapPieces.includes(LEVEL.reward.mapPiece)) this.game.party.mapPieces.push(LEVEL.reward.mapPiece)
+    }
+    if (!this.catchingUp) this.onProgress(events)
+    else if (this.progress.solved) this.onSolvedQuietly()
+    return true
+  }
+
+  private onSolvedQuietly(): void {
+    this.gate.open()
+    const i = this.boxes.indexOf(this.gate.collider)
+    if (i >= 0) this.boxes.splice(i, 1)
+    this.refreshMap()
+  }
+
+  // ---- Crew play ---------------------------------------------------------------------------------
+
+  private connectNet(): void {
+    const net = this.game.net
+    if (!net) return
+    const on = <T,>(type: string, cb: (msg: T) => void) => this.unsubscribe.push(net.on<T>(type, cb))
+    on<{ step: string; by: string }>('step', (msg) => {
+      const wasKey = this.progress.nextStep?.id === 'takeKey' && msg.step === 'takeKey'
+      if (this.applyStep(msg.step, msg.by) && wasKey && msg.by === net.sessionId) {
+        this.teach('key', 'The key! Keep hold of it, or stow it in your backpack by letting go over your shoulder.')
+      }
+    })
+    on<{ id: string; by: string }>('collected', (msg) => {
+      const c = this.collectibles.find((x) => x.id === msg.id)
+      if (!c) return
+      c.item.enabled = false
+      c.item.object.visible = false
+      if (msg.by === net.sessionId) this.gain(c.kind, c.item)
+    })
+    // Catch up on everything the crew already did before we arrived.
+    this.catchingUp = true
+    for (const step of net.state?.steps ?? []) this.applyStep(step)
+    this.catchingUp = false
+    for (const id of net.state?.collected ?? []) {
+      const c = this.collectibles.find((x) => x.id === id)
+      if (c) {
+        c.item.enabled = false
+        c.item.object.visible = false
+      }
+    }
   }
 
   private onProgress(events: ProgressEvent[]): void {
@@ -406,6 +483,7 @@ export class Level1Stage implements Stage {
   }
 
   private addCollectible(object: THREE.Object3D, kind: ItemKind): void {
+    const id = `${kind}-${this.collectibles.filter((c) => c.kind === kind).length}`
     const item = new LooseItem(object, {
       radius: 0.08,
       settle: 'home',
@@ -414,22 +492,37 @@ export class Level1Stage implements Stage {
         return true
       },
     })
-    this.collectibles.push({ item, kind })
+    this.collectibles.push({ item, kind, id })
     this.grab.add(item)
   }
 
   private collect(item: LooseItem, kind: ItemKind, hand: Hand | null): void {
     const { game } = this
     if (!item.enabled) return
-    if (game.party.inventory.add(kind) < 0) {
+    if (game.party.inventory.full && !game.party.inventory.has(kind)) {
       game.hud.now('Your backpack is full.', 2)
+      return
+    }
+    hand?.pulse(0.3, 30)
+    if (game.net) {
+      // The server decides who got it first; it's hidden now so nobody grabs it twice.
+      const c = this.collectibles.find((x) => x.item === item)!
+      item.enabled = false
+      item.object.visible = false
+      game.net.send('collect', { id: c.id, points: SCORE[kind] ?? 0 })
       return
     }
     item.enabled = false
     item.object.visible = false
     game.party.score += SCORE[kind] ?? 0
+    this.gain(kind, item)
+  }
+
+  /** This player picked it up: into the backpack. */
+  private gain(kind: ItemKind, item: LooseItem): void {
+    const { game } = this
+    game.party.inventory.add(kind)
     game.audio.play('pop', item.object.getWorldPosition(this.v), 0.8)
-    hand?.pulse(0.3, 30)
     this.backpack.refresh()
     if (kind === 'coin') this.teach('coin', 'Coins and gems go straight into your backpack. Press A/X to look inside.')
     if (kind === 'gem') game.hud.now('A secret gem! +50', 3)

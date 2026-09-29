@@ -10,7 +10,7 @@ Tracks milestones from `BRIEF.md`, decisions, and placeholders to replace later.
 | 2 | Movement sandbox: fog, caustics, arm swimming, bubble jets, air gauge, grab, comfort vignette | Built and tested in an emulated Quest 3; waiting for real-headset test and tuning |
 | 3 | Intro sequence: galleon deck, clay-shooting fake-out, beer barrel, darts, cannon attack, gear up, sinking, dive transition | Built and tested end to end in an emulated Quest 3; waiting for real-headset test |
 | 4 | Level 1 + systems: backpack, map pieces, first riddle, Strongman skill, checkpoints | Built and tested end to end in an emulated Quest 3; waiting for real-headset test |
-| 5 | Multiplayer | Not started |
+| 5 | Multiplayer: Colyseus rooms, room codes, pose sync, shared objects, voice, reconnect | Built and tested with real clients (Node and two/three headless browsers); waiting for a multi-headset test |
 | 6 | Bots + all classes + magic | Not started |
 | 7 | Levels 2–5 + finale, polish | Not started |
 
@@ -127,6 +127,34 @@ After going overboard, the galleon sinks past you and settles on the seabed: tha
 - `npm test`: 55 unit tests, now including the backpack (stacking, 12-slot limit, using a key), level progress (steps only in order, three hints a minute apart, progress resetting the hint clock, the compass at two minutes), the level file's contents, and skill cooldowns.
 - End-to-end in an emulated Quest 3, with real controller input throughout: map opens on the left stick click, a coin is collected by swimming into it, the backpack opens on A, a head pushed into the cabin wall is pushed back out, entering the cabin completes the first step, grabbing the figurehead gives the "won't budge" feedback, B heaves her aside and reveals the key, the key is taken and stowed over the shoulder, an empty hand on the lock uses the key from the backpack, the map piece solves the level and opens the gate, and swimming through the arch completes the level and writes the save.
 
+## Milestone 5: multiplayer
+
+Up to four divers per crew. Solo play still works with no server at all.
+
+**Joining** (start screen, "Crew"): type your name, then **Create crew** (a private room with a 4-letter code to share), **Quick play** (joins or opens a public crew), or type a code and **Join**. Everyone starts where the crew is: on deck, or in Level 1 once the ship has gone down. **Rejoin crew** appears after a reload or drop; **Leave crew** goes back to solo.
+
+**Server** (`server/`): one Node process on Render serves the game and runs Colyseus 0.18 on the same address, so there's nothing new to sign up for. `CrewRoom` holds the synced state everyone agrees on (roster, team score, when the attack started and who shot first, Level 1 riddle steps, collectibles taken, who holds which shared object, map pieces) and decides every shared event:
+- the first pellet on the ship in the bay starts the attack, for everyone at the same moment (late joiners catch up to the right second);
+- one clay thrower for the crew: the server launches clays with a seed so everyone sees the same flight, and the first hit report breaks it; the scoreboard lists the whole crew;
+- shared objects: first grab wins (the blunderbusses: while someone holds one, everyone sees it in their hand, with the flash and boom when they fire, and nobody else can take it);
+- coins and gems count once, into the team score, and go into the backpack of whoever got there first;
+- riddle steps are accepted only in order and then happen in everyone's world ("Bob heaved the figurehead aside!"); once someone takes the key it disappears for everyone else.
+
+**Poses**: head and both hands, 20 times a second each way; others are drawn 100 ms in the past, blended between updates, as coloured divers (masked head, body with tank, gloved hands, name tag) and only when they're in the same part of the game as you.
+
+**Voice** (`net/Voice.ts`): WebRTC audio between every pair of players (at most 4), signalled through the room. Each voice comes from that diver's head and is muffled when either of you is underwater. Mute on the start screen, or in VR by touching the dive computer on your left wrist with your other hand.
+
+**Reconnect**: a dropped player's slot is kept for 2 minutes and others see "(reconnecting)"; the game reconnects by itself when the network returns, or with **Rejoin crew** after a reload. (A bot will stand in while they're gone once bots exist, Milestone 6.)
+
+**How it was tested**
+- `npm test`: 62 unit tests, now including the server rules (room codes, lowest free slot, first-grab-wins claims, first-report-wins events, name cleaning).
+- `npm run test:crew` against a running server, with real Colyseus clients: private room code, Quick Play not landing in a private room, join by code and roster, pose relay, claims, collect-once and team score, server clays and first hit, one attack start, riddle steps in order only, voice signalling to one player, drop and reconnect into the same slot. All pass.
+- Two headless browsers (desktop mode, fake microphones): create a crew, join it by typing the code in lowercase, each sees the other's avatar move, one picks up a gun and the other sees it in her hand and can't take it, server clays appear in both worlds with the same ids, one shot at the ship starts both attacks together ("Who Shot First" recorded for both), voice connects peer to peer both ways, and a 6-second network outage shows "dropped out" to the other player then reconnects into the same session.
+- Three browsers in Level 1: a coin taken by one disappears for the others, the team score matches, riddle steps by one player happen for everyone, the key vanishes for others once taken, the solve opens the gate for all, and a third player joining afterwards arrives with everything caught up.
+- Solo Level 1 end to end still passes on the new server.
+
+**Not yet**: beer, darts, loose props underwater and the backpack stay per-player for now (their state isn't shared); voice isn't slurred when drunk. Voice uses Google's public STUN server only; on some strict networks two players may not be able to connect voice without a TURN relay (a paid service, so I haven't added one).
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.
@@ -139,6 +167,9 @@ After going overboard, the galleon sinks past you and settles on the seabed: tha
 - **2026-09-29 — Comfort on a sinking ship.** The player's view stays level while the deck tilts under them; only the ground height follows the deck. Cannon hits shake the ship's visuals, not the player.
 - **2026-09-29 — Class in single player.** Until the lobby's character board exists (Milestones 5–6), the local player is the Strongman, since Level 1's riddle needs him.
 - **2026-09-29 — Level 1's exit.** Level 2 isn't built yet, so the level ends by swimming through the reef arch; the save records `level2` as the next checkpoint.
+- **2026-09-29 — Colyseus 0.18 and the server.** The current Colyseus (0.18, with `@colyseus/sdk` on the client) runs inside the same Render service as the game (Express serves the built client). The room code is the room id, so joining by code is a direct lookup; crews made with "Create crew" are private and never matched by Quick Play.
+- **2026-09-29 — What's shared.** Shared facts live in the synced state (so late joiners and reconnects are right); moment-to-moment things (poses, shots, clay launches) are messages. Beer, darts and underwater loose props stay per-player for now.
+- **2026-09-29 — Voice relay.** Voice is peer-to-peer with a free public STUN server. A TURN relay would make voice work on every network but is a paid service, so it's left out until you decide.
 - **2026-09-29 — Repo layout.** One root `package.json` with `client/` (Vite root) and `server/`, so Render builds and runs everything with `npm run build` / `npm start`.
 
 ## Placeholders to replace

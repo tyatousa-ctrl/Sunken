@@ -10,10 +10,14 @@ export interface Settings {
   seated: boolean
   /** Drunk visual effects (fog, haze); the gameplay wobble stays. */
   drunkFx: boolean
+  /** Voice chat: your microphone is muted. */
+  muted: boolean
+  /** Name shown to your crew. */
+  name: string
 }
 
 const KEY = 'sunken-sicily.settings'
-const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap', seated: false, drunkFx: true }
+const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap', seated: false, drunkFx: true, muted: false, name: '' }
 
 export function loadSettings(): Settings {
   try {

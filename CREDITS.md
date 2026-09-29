@@ -15,3 +15,5 @@ Everything else in the scene (ships, crew, coast, props, sound effects) is built
 | Resource | Author | License | Use |
 |---|---|---|---|
 | [three.js](https://threejs.org) | three.js authors | MIT | 3D engine and WebXR |
+| [Colyseus](https://colyseus.io) (`@colyseus/core`, `ws-transport`, `schema`, `sdk`) | Endel Dreyer and contributors | MIT | Multiplayer rooms and state sync |
+| [Express](https://expressjs.com) | Express contributors | MIT | Serving the game |

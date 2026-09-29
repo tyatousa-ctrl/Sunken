@@ -10,13 +10,20 @@
     "build": "tsc -p client && vite build --config client/vite.config.ts",
     "start": "tsx server/index.ts",
     "typecheck": "tsc -p client && tsc -p server",
-    "test": "tsx --test 'client/src/**/*.test.ts'"
+    "test": "tsx --test 'client/src/**/*.test.ts' 'server/**/*.test.ts'",
+    "test:crew": "tsx server/tests/crew.integration.ts"
   },
   "dependencies": {
+    "@colyseus/core": "^0.18.18",
+    "@colyseus/schema": "^5.0.34",
+    "@colyseus/sdk": "^0.18.4",
+    "@colyseus/ws-transport": "^0.18.4",
+    "express": "^5.2.1",
     "three": "^0.186.1",
     "tsx": "^4.23.15"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^26.6.3",
     "@types/three": "^0.186.0",
     "typescript": "^7.0.2",

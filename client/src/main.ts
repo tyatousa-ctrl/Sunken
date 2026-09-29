@@ -6,6 +6,8 @@ import type { TurnMode } from './movement/Player'
 import { DiveStage } from './stages/DiveStage'
 import { IntroStage } from './stages/IntroStage'
 import { Level1Stage } from './stages/Level1Stage'
+import { NetClient, type JoinMode } from './net/NetClient'
+import { ATTACK_SECONDS } from './intro/attackTimeline'
 
 const settings = loadSettings()
 const game = new Game(document.getElementById('app')!, settings)
@@ -63,6 +65,76 @@ const xr = (navigator as Navigator & { xr?: { isSessionSupported(mode: string): 
 const showNoXr = () => ((document.getElementById('no-xr') as HTMLElement).hidden = false)
 if (!xr) showNoXr()
 else xr.isSessionSupported('immersive-vr').then((ok) => ok || showNoXr(), showNoXr)
+
+// ---- Crew ----------------------------------------------------------------------------------------
+
+const nameInput = document.getElementById('crew-name') as HTMLInputElement
+const codeInput = document.getElementById('crew-code') as HTMLInputElement
+const muteToggle = document.getElementById('opt-mute') as HTMLInputElement
+const status = document.getElementById('crew-status') as HTMLElement
+const crewButtons = ['crew-create', 'crew-quick', 'crew-join'].map((id) => document.getElementById(id) as HTMLButtonElement)
+const rejoinButton = document.getElementById('crew-rejoin') as HTMLButtonElement
+const leaveButton = document.getElementById('crew-leave') as HTMLButtonElement
+nameInput.value = settings.name
+muteToggle.checked = settings.muted
+
+nameInput.addEventListener('change', () => {
+  settings.name = nameInput.value.trim().slice(0, 16)
+  saveSettings(settings)
+  game.net?.send('profile', { name: settings.name })
+})
+muteToggle.addEventListener('change', () => {
+  settings.muted = muteToggle.checked
+  game.voice?.setMuted(settings.muted)
+  saveSettings(settings)
+})
+
+async function joinCrew(mode: JoinMode): Promise<void> {
+  crewButtons.forEach((b) => (b.disabled = true))
+  rejoinButton.hidden = true
+  status.textContent = 'Connecting...'
+  try {
+    const net = await NetClient.connect(mode, settings.name || 'Diver')
+    await game.connect(net)
+    // Everyone restarts where the crew is: on deck, or in Level 1 once the ship has gone down.
+    const state = net.state
+    const shipGone = state?.attackAt && (net.serverNow() - state.attackAt) / 1000 > ATTACK_SECONDS
+    game.goTo(() => (shipGone ? new Level1Stage(game, false) : new IntroStage(game)))
+    leaveButton.hidden = false
+    showCrew()
+  } catch (err) {
+    crewButtons.forEach((b) => (b.disabled = false))
+    status.textContent = mode.kind === 'join' ? `Couldn't join crew ${mode.code}. Check the code (it may be full or closed).` : "Couldn't reach the crew server. Try again in a moment."
+    console.warn('crew', err)
+  }
+}
+
+function showCrew(): void {
+  const net = game.net
+  if (!net) return
+  const names = net.roster().map((p) => `${p.name}${p.sessionId === net.sessionId ? ' (you)' : ''}${p.connected ? '' : ' (reconnecting)'}`)
+  status.innerHTML = `Crew <b>${net.code}</b> · ${names.join(', ')}`
+}
+setInterval(showCrew, 1000)
+
+document.getElementById('crew-create')!.addEventListener('click', () => void joinCrew({ kind: 'create' }))
+document.getElementById('crew-quick')!.addEventListener('click', () => void joinCrew({ kind: 'quick' }))
+document.getElementById('crew-join')!.addEventListener('click', () => {
+  const code = codeInput.value.trim().toUpperCase().replace(/[^A-Z]/g, '')
+  if (code.length === 4) void joinCrew({ kind: 'join', code })
+  else status.textContent = 'Room codes are 4 letters.'
+})
+leaveButton.addEventListener('click', async () => {
+  await game.net?.leave()
+  location.reload()
+})
+// Dropped out or reloaded this tab? Offer the way back into the same slot.
+const saved = NetClient.savedRejoin()
+if (saved) {
+  rejoinButton.hidden = false
+  rejoinButton.textContent = `Rejoin crew ${saved.code}`
+  rejoinButton.addEventListener('click', () => void joinCrew({ kind: 'rejoin', token: saved.token }))
+}
 
 // Test hook: `?debug` exposes the game object for automated browser tests and console poking.
 if (params.has('debug')) Object.assign(window, { sunken: game })

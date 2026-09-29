@@ -3,10 +3,18 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "strict": true,
     "noEmit": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true
   },
-  "include": ["."]
+  "include": [
+    ".",
+    "../client/src/net/protocol.ts",
+    "../client/src/systems/LevelProgress.ts"
+  ]
 }

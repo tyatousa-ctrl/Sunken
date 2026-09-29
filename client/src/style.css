@@ -24,3 +24,12 @@ body.in-xr .hud-dom, body.in-xr .dive-dom { display: none; }
   #intro { top: 84px; max-height: calc(100% - 180px); }
   .fps-dom, .dive-dom { left: 16px; right: auto; }
 }
+#intro .crew { border-top: 1px solid rgba(255,255,255,0.15); border-bottom: 1px solid rgba(255,255,255,0.15); padding: 10px 0; margin: 8px 0 12px; display: grid; gap: 8px; }
+#intro .crew h2 { margin: 0; font-size: 17px; }
+#intro .crew .row { display: flex; gap: 8px; }
+#intro .crew button { flex: 1; background: #1c5f86; color: inherit; border: 1px solid #3fa7ff; border-radius: 8px; padding: 8px 10px; font: inherit; font-weight: 600; cursor: pointer; }
+#intro .crew button:disabled { opacity: 0.5; cursor: default; }
+#intro .crew input[type=text], #intro .crew input:not([type]) { background: #0b2c45; color: inherit; border: 1px solid #2d6f8c; border-radius: 6px; padding: 6px 8px; font: inherit; min-width: 0; flex: 1; }
+#crew-code { text-transform: uppercase; letter-spacing: 0.2em; font-weight: 700; }
+#crew-status { margin: 0; font-size: 14px; }
+#crew-status b { color: #ffd166; letter-spacing: 0.15em; }

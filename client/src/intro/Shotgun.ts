@@ -30,6 +30,10 @@ export class Shotgun implements Interactable {
   support: Hand | null = null
   /** Drunk aim sway (radians); steadied by half when held two-handed. */
   sway = 0
+  /** Set while another crew member holds this gun: it rides in their hand and can't be grabbed. */
+  remoteHand: THREE.Object3D | null = null
+  onGrabbed: () => void = () => {}
+  onReleased: () => void = () => {}
 
   private readonly model = new THREE.Group()
   private readonly hinge = new THREE.Group()
@@ -69,6 +73,7 @@ export class Shotgun implements Interactable {
   }
 
   grabGap(point: THREE.Vector3, hand: Hand): number {
+    if (this.remoteHand) return Infinity
     if (!this.main) return point.distanceTo(this.object.getWorldPosition(this.v)) - 0.12
     if (hand !== this.main && !this.support) return point.distanceTo(this.object.localToWorld(this.v.copy(BARREL_MID))) - 0.12
     return Infinity
@@ -83,6 +88,7 @@ export class Shotgun implements Interactable {
       this.object.quaternion.identity()
       this.prevPitch = this.pitch()
       hand.pulse(0.4, 40)
+      this.onGrabbed()
     } else {
       this.support = hand
       hand.pulse(0.25, 30)
@@ -104,6 +110,41 @@ export class Shotgun implements Interactable {
     // Snap back to the rack (never lost overboard).
     this.rackParent.attach(this.object)
     this.returning = 0.4
+    this.onReleased()
+  }
+
+  /** Someone else got it first (the server said no): let go. */
+  forceDrop(): void {
+    const main = this.main
+    if (!main) return
+    main.held = null
+    this.release(main)
+  }
+
+  /** Show the gun in another player's hand (or back on the rack with null). */
+  setRemoteHand(hand: THREE.Object3D | null): void {
+    if (hand === this.remoteHand) return
+    this.remoteHand = hand
+    if (hand) {
+      hand.add(this.object)
+      this.object.position.set(0, -0.03, 0.05)
+      this.object.quaternion.identity()
+      this.returning = 0
+    } else {
+      this.rackParent.attach(this.object)
+      this.returning = 0.4
+    }
+  }
+
+  /** Muzzle flash, smoke and boom for a shot fired by the player holding it remotely. */
+  playRemoteFire(): void {
+    this.object.updateMatrixWorld(true)
+    const origin = this.object.localToWorld(this.v.copy(MUZZLE)).clone()
+    const forward = this.forward(new THREE.Vector3())
+    this.recoil = 1
+    this.fx.audio.play('gunshot', origin)
+    this.fx.flash.emit({ position: origin, velocity: forward.clone().multiplyScalar(3), color: 0xffc56b, size: 0.45, endSize: 0.1, life: 0.08, count: 3 })
+    this.fx.smoke.emit({ position: origin, velocity: forward.clone().multiplyScalar(2.5), spread: 0.4, color: 0xb9b2a8, size: 0.15, endSize: 0.9, life: 1.8, count: 10, alpha: 0.7 })
   }
 
   setHighlight(on: boolean): void {

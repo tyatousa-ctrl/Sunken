@@ -10,6 +10,8 @@ const MAX_CLAYS = 4
 const BUTTON_COOLDOWN = 1.5
 
 interface Clay {
+  id: number
+  seed: number
   mesh: THREE.Mesh
   velocity: THREE.Vector3
   alive: boolean
@@ -40,6 +42,7 @@ export class ClayRange {
   private readonly boardCanvas = document.createElement('canvas')
   private readonly boardTexture: THREE.CanvasTexture
   private time = 0
+  private localId = 0
   private buttonCooldown = 0
   private boardBroken = false
   private readonly v = new THREE.Vector3()
@@ -73,7 +76,7 @@ export class ClayRange {
       const mesh = new THREE.Mesh(clayGeometry, clayMaterial)
       mesh.visible = false
       root.add(mesh)
-      this.clays.push({ mesh, velocity: new THREE.Vector3(), alive: false, pendingAt: -1 })
+      this.clays.push({ id: 0, seed: 0, mesh, velocity: new THREE.Vector3(), alive: false, pendingAt: -1 })
     }
 
     // Scoreboard hangs on the main mast, facing the stern where the shooters stand.
@@ -98,22 +101,27 @@ export class ClayRange {
     return this.clays.some((c) => c.alive || c.pendingAt >= 0)
   }
 
-  /** Launch one or two clays. */
+  /** Launch one or two clays (solo play). */
   pull(count: number): void {
-    let delay = 0
-    for (const clay of this.clays) {
-      if (count <= 0) break
-      if (clay.alive || clay.pendingAt >= 0) continue
-      clay.pendingAt = this.time + delay
-      delay += 0.3
-      count--
-    }
+    for (let i = 0; i < count; i++) this.launchSeeded(++this.localId, Math.floor(Math.random() * 2 ** 31), i * 0.3)
   }
 
-  /** Test a shot's pellets against the clays. Returns how many clays broke. */
-  shoot(shooter: Shooter, origin: THREE.Vector3, directions: THREE.Vector3[]): number {
-    shooter.shots++
-    let broken = 0
+  /** Launch a clay the server announced: the seed gives every player the same flight. */
+  launchSeeded(id: number, seed: number, delay: number): void {
+    const clay = this.clays.find((c) => !c.alive && c.pendingAt < 0)
+    if (!clay) return
+    clay.id = id
+    clay.seed = seed
+    clay.pendingAt = this.time + delay
+  }
+
+  /**
+   * Which clays a shot's pellets pass through. With `apply` (solo), they shatter and count here;
+   * in a crew the server confirms the hit first.
+   */
+  shoot(shooter: Shooter, origin: THREE.Vector3, directions: THREE.Vector3[], apply = true): number[] {
+    if (apply) shooter.shots++
+    const hit: number[] = []
     for (const clay of this.clays) {
       if (!clay.alive) continue
       for (const dir of directions) {
@@ -122,15 +130,34 @@ export class ClayRange {
         if (along < 0) continue
         const miss = this.toClay.addScaledVector(dir, -along).length()
         if (miss < CLAY_HIT_RADIUS) {
-          this.shatter(clay)
-          broken++
+          hit.push(clay.id)
+          if (apply) this.shatter(clay)
           break
         }
       }
     }
-    shooter.hits += broken
+    if (apply) {
+      shooter.hits += hit.length
+      this.drawBoard()
+    }
+    return hit
+  }
+
+  /** The server confirmed a hit. */
+  shatterById(id: number): void {
+    const clay = this.clays.find((c) => c.alive && c.id === id)
+    if (clay) this.shatter(clay)
+  }
+
+  /** Crew scoreboard from the server's roster. */
+  setShooters(list: Shooter[]): void {
+    const same = list.length === this.shooters.length && list.every((s, i) => {
+      const o = this.shooters[i]
+      return o.name === s.name && o.hits === s.hits && o.shots === s.shots && o.color === s.color
+    })
+    if (same) return
+    this.shooters.splice(0, this.shooters.length, ...list)
     this.drawBoard()
-    return broken
   }
 
   /** Touching the red button launches clays too. */
@@ -177,10 +204,12 @@ export class ClayRange {
     clay.alive = true
     clay.mesh.visible = true
     this.thrower.localToWorld(clay.mesh.position.set(0.6, 0.75, 0))
-    // Out to starboard, anywhere from slightly forward to well astern.
-    const yaw = -0.6 + Math.random() * 0.75
-    const speed = 12 + Math.random() * 4
-    clay.velocity.set(Math.cos(yaw) * speed, 7 + Math.random() * 2.2, -Math.sin(yaw) * speed)
+    // Out to starboard, anywhere from slightly forward to well astern (seeded, so everyone agrees).
+    let s = clay.seed || 1
+    const random = () => ((s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296)
+    const yaw = -0.6 + random() * 0.75
+    const speed = 12 + random() * 4
+    clay.velocity.set(Math.cos(yaw) * speed, 7 + random() * 2.2, -Math.sin(yaw) * speed)
     clay.velocity.applyQuaternion(this.ship.group.quaternion)
     this.fx.audio.play('thud', clay.mesh.position, 0.8)
   }

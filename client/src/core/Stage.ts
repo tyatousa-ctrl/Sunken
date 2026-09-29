@@ -7,6 +7,8 @@ import type { Player } from '../movement/Player'
 import type { Hud } from '../ui/Hud'
 import type { WristComputer } from '../ui/WristComputer'
 import type { Inventory } from '../systems/Inventory'
+import type { NetClient } from '../net/NetClient'
+import type { RemotePlayers } from '../net/RemotePlayers'
 import type { Settings } from './settings'
 
 /** Things that last the whole run (achievements, stats), shown on the victory screen later. */
@@ -47,6 +49,9 @@ export interface GameContext {
   settings: Settings
   record: RunRecord
   party: PartyState
+  /** The crew connection, or null when playing solo. */
+  net: NetClient | null
+  remote: RemotePlayers | null
   /** The hands in use this frame: both controllers in VR, the virtual hand on desktop. */
   readonly hands: Hand[]
   readonly inXr: boolean
@@ -58,6 +63,8 @@ export interface GameContext {
 
 /** One chunk of the game (the ship deck, an underwater level). Owns everything under `root`. */
 export interface Stage {
+  /** Which part of the game this is ("intro", "level1", "sandbox"): avatars only show to players in the same one. */
+  readonly id: string
   readonly root: THREE.Group
   enter(): void
   update(dt: number, elapsed: number): void

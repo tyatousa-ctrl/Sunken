@@ -8,6 +8,7 @@ import { SANDBOX_RADIUS, SeabedScene, SURFACE_Y, VENT_POSITION, VENT_RADIUS, san
 
 // The underwater movement sandbox (`?stage=sandbox`): open seabed, props to grab, an air vent.
 export class DiveStage implements Stage {
+  readonly id = 'sandbox'
   readonly root = new THREE.Group()
   private readonly bubbles = new Bubbles(SURFACE_Y)
   private world!: SeabedScene

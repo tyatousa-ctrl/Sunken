@@ -11,6 +11,10 @@ import { Hud } from '../ui/Hud'
 import { WristComputer } from '../ui/WristComputer'
 import type { Settings } from './settings'
 import { Inventory } from '../systems/Inventory'
+import type { NetClient, RosterEntry } from '../net/NetClient'
+import { RemotePlayers } from '../net/RemotePlayers'
+import { Voice } from '../net/Voice'
+import type { PoseArray } from '../net/protocol'
 import type { GameContext, PartyState, RunRecord, Stage } from './Stage'
 
 const FADE_SECONDS = 0.6
@@ -34,12 +38,20 @@ export class Game implements GameContext {
   // Single player plays the Strongman until character selection arrives with the lobby.
   readonly party: PartyState = { character: 'strongman', inventory: new Inventory(), score: 0, hasMap: false, mapPieces: [1], checkpoint: 'intro' }
   stage: Stage | null = null
+  net: NetClient | null = null
+  remote: RemotePlayers | null = null
+  voice: Voice | null = null
 
   private readonly timer = new THREE.Timer()
   private readonly controllers: Controllers
   private readonly size = new THREE.Vector2()
   private pending: (() => Stage) | null = null
   private fadeDir = 0
+  private readonly pose: PoseArray = new Array(21).fill(0)
+  private readonly pv = new THREE.Vector3()
+  private readonly pq = new THREE.Quaternion()
+  private lastRoster = new Map<string, RosterEntry>()
+  private micTouchCooldown = 0
 
   constructor(
     container: HTMLElement,
@@ -104,6 +116,17 @@ export class Game implements GameContext {
     this.renderer.setAnimationLoop((time) => this.tick(time))
   }
 
+  /** Join a crew: start sending our pose, draw the others, open voice chat. */
+  async connect(net: NetClient): Promise<void> {
+    this.net = net
+    this.remote = new RemotePlayers(this.scene, net)
+    this.voice = new Voice(net, this.audio, this.remote)
+    this.audio.start()
+    await this.voice.start()
+    this.voice.setMuted(this.settings.muted)
+    this.hud.now(`You're in crew ${net.code}. Share the code so friends can join.`, 6)
+  }
+
   goTo(next: () => Stage): void {
     if (this.pending) return
     this.pending = next
@@ -122,12 +145,80 @@ export class Game implements GameContext {
       this.desktop.hand.update(dt)
     }
     this.stage?.update(dt, time / 1000)
+    this.updateNet(dt)
     this.updateTransition(dt)
     this.hud.update(dt, inXr)
     this.audio.update(dt, this.player.lastResult.thrust)
     this.vignette.update(dt, this.player.speed, this.player.physics.yawRate)
     this.fps.update(time)
     this.renderer.render(this.scene, this.camera)
+  }
+
+  private updateNet(dt: number): void {
+    const net = this.net
+    if (!net || !this.stage) return
+    const underwater = this.player.env?.kind === 'swim'
+    net.update(dt, this.stage.id, this.buildPose(), underwater)
+    this.remote?.update(this.stage.id)
+    this.voice?.update(underwater)
+    this.announceRoster(net)
+    this.checkMicTouch(dt)
+  }
+
+  /** Head and both hands, world space: [head pos, head quat, left pos, left quat, right pos, right quat]. */
+  private buildPose(): PoseArray {
+    const pose = this.pose
+    const write = (object: THREE.Object3D, at: number) => {
+      object.getWorldPosition(this.pv).toArray(pose, at)
+      object.getWorldQuaternion(this.pq).toArray(pose, at + 3)
+    }
+    write(this.camera, 0)
+    if (this.inXr) {
+      const left = this.controllers.left
+      const right = this.controllers.right
+      if (left) write(left.grip, 7)
+      else this.restingHand(-1, 7)
+      if (right) write(right.grip, 14)
+      else this.restingHand(1, 14)
+    } else {
+      this.restingHand(-1, 7)
+      write(this.desktop.hand.grip, 14)
+    }
+    return pose
+  }
+
+  /** A hand at the hip when it isn't tracked. */
+  private restingHand(side: number, at: number): void {
+    this.pv.set(side * 0.25, -0.55, -0.1)
+    this.camera.localToWorld(this.pv).toArray(this.pose, at)
+    this.camera.getWorldQuaternion(this.pq).toArray(this.pose, at + 3)
+  }
+
+  private announceRoster(net: NetClient): void {
+    const now = new Map(net.roster().filter((p) => p.sessionId !== net.sessionId).map((p) => [p.sessionId, p]))
+    for (const [id, p] of now) {
+      const before = this.lastRoster.get(id)
+      if (!before) this.hud.now(`${p.name} joined the crew.`, 3)
+      else if (before.connected && !p.connected) this.hud.now(`${p.name} dropped out. Their slot is kept for 2 minutes.`, 4)
+      else if (!before.connected && p.connected) this.hud.now(`${p.name} is back.`, 3)
+    }
+    for (const [id, p] of this.lastRoster) if (!now.has(id)) this.hud.now(`${p.name} left the crew.`, 3)
+    this.lastRoster = now
+  }
+
+  /** Touch the dive computer on your left wrist with your other hand to mute or unmute. */
+  private checkMicTouch(dt: number): void {
+    this.micTouchCooldown = Math.max(0, this.micTouchCooldown - dt)
+    const voice = this.voice
+    const right = this.controllers.right
+    const left = this.controllers.left
+    if (!voice || !this.inXr || !right || !left || this.micTouchCooldown > 0) return
+    if (right.worldPos(this.pv).distanceTo(left.grip.localToWorld(new THREE.Vector3(0, 0.015, 0.075))) > 0.06) return
+    this.micTouchCooldown = 1.2
+    voice.setMuted(!voice.muted)
+    this.settings.muted = voice.muted
+    right.pulse(0.4, 40)
+    this.hud.now(voice.muted ? 'Microphone off.' : 'Microphone on.', 2)
   }
 
   private updateTransition(dt: number): void {

@@ -28,6 +28,9 @@ export class CaptainsCabin {
   readonly lock = new THREE.Object3D()
   lifted = false
   unlocked = false
+  /** Someone already took the key: never reveal it again. */
+  keyTaken = false
+  private keyRevealed = false
   private liftT = -1
   private lidT = -1
   private readonly lid = new THREE.Group()
@@ -169,7 +172,11 @@ export class CaptainsCabin {
         this.figureheadStart.z + u * (STERN_Z - 0.6 - this.figureheadStart.z) * 0.4,
       )
       this.figurehead.rotation.z = u * 0.6
-      if (this.liftT >= 0.3) this.key.visible = true
+      // Reveal the key once, as she comes up (not every frame: it may already have been taken).
+      if (!this.keyRevealed && !this.keyTaken && this.liftT >= 0.3) {
+        this.keyRevealed = true
+        this.key.visible = true
+      }
       if (this.liftT >= 1) this.audio.play('thud', this.figurehead.getWorldPosition(new THREE.Vector3()))
     }
     if (this.lidT >= 0 && this.lidT < 1) {
