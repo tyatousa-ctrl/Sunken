@@ -47,6 +47,8 @@ export class Game implements GameContext {
   readonly miniMap: MiniMap
   /** Right thumbstick (Tab on desktop): empty your hands, switch class, hop to a level. */
   readonly menu: GameMenu
+  /** Which build this is (shown on the menu, so you can tell a fresh deploy from an old one). */
+  buildId = ''
   /** Makes a fresh stage by id ('intro', 'level1' … 'vault', 'sandbox'); set by main. */
   stageFactory: ((id: string) => Stage) | null = null
   /** Where the crew is (the server's word): everyone goes where anyone moves on to. */
@@ -300,7 +302,7 @@ export class Game implements GameContext {
         if (make) this.goTo(() => make(id))
       } })
     })
-    items.push({ row: 4, key: 'Tab', label: 'Close', action: () => {} })
+    items.push({ row: 4, key: 'Tab', label: 'Close', sub: this.buildId ? `Build ${this.buildId}` : undefined, action: () => {} })
     return {
       sections: [
         { row: 1, title: 'Your class' },

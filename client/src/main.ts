@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import './style.css'
 import { Game } from './core/Game'
+import { watchForNewBuild } from './core/versionCheck'
 import { loadSettings, saveSettings } from './core/settings'
 import type { VignetteStrength } from './movement/ComfortVignette'
 import type { TurnMode } from './movement/Player'
@@ -87,6 +88,26 @@ const spellMenuToggle = document.getElementById('opt-spellmenu') as HTMLInputEle
 declare const __BUILD_ID__: string
 document.getElementById('build-id')!.textContent = `Build ${__BUILD_ID__}`
 console.info(`Sunken Sicily build ${__BUILD_ID__}`)
+game.buildId = __BUILD_ID__
+// A newer deploy on the server: reload now if we're on the start page, or say so in VR.
+watchForNewBuild(__BUILD_ID__, (build) => {
+  console.info(`Newer build on the server: ${build}`)
+  // Only once per new build (if a reload somehow still brings the old page back, don't loop).
+  let reloaded = ''
+  try {
+    reloaded = sessionStorage.getItem('sunken-reloaded-for') ?? ''
+  } catch {
+    // No storage: just say so.
+  }
+  if (!game.inXr && reloaded !== build) {
+    try {
+      sessionStorage.setItem('sunken-reloaded-for', build)
+    } catch {
+      // Carry on.
+    }
+    location.reload()
+  } else game.hud.now(`A new version of the game is ready (${build.slice(0, 7)}). Take off the headset view and reload the page to get it.`, 12)
+})
 const ambienceSlider = document.getElementById('opt-ambience') as HTMLInputElement
 const hintsToggle = document.getElementById('opt-hints') as HTMLInputElement
 ambienceSlider.value = String(Math.round(settings.ambience * 100))

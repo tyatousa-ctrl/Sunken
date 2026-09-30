@@ -402,6 +402,11 @@ Fixed:
 - **Just a fire.** The barrel by Whack-a-Rat has no sign: it's a fire. Hold your hands over it and they're warmed (a soft hum in the controllers). Keep them there 7 seconds straight and they burn: your view flushes red and both hands buzz hard until you pull them away. The roast is found by accident; the only hint is at the end of a round with rats bonked: "Hit the red button to play again... or grab one of those rats."
 - **Cannoli cart.** To port, just forward of the main mast: a wooden cart with big wheels, a green-white-red striped canopy and CANNOLI painted along it. On the counter: a tray of six ridged, golden shells, a piping bag standing in a cup, jars of crushed pistachios and chocolate chips, and a plate. Hold a shell in one hand and the bag in the other; squeeze the trigger with the nozzle at an end of the shell and cream pipes in, showing at both ends as it fills. Dip a creamy end in a jar to coat it. Hold it to your mouth to eat it (three crunchy bites, and a word on the flavour), or leave it on the plate (room for three) for someone else to come and eat. An eaten one is back on the tray, fresh, 5 seconds later. In a crew everyone sees the same shells: filling, toppings, what's on the plate, and what's been eaten.
 
+## Getting new deploys onto the headset
+
+- **The game notices a newer deploy.** Every build writes `version.json` (its commit and build time) next to the page. A running game asks for it every minute and whenever the tab comes back into view; if the server has a different build, the start page reloads itself onto it (once per build, so it can't loop), and in VR a notice says a new version is ready. The Quest browser keeps tabs alive for days, so without this an open tab could run an old build long after a deploy.
+- **The build shows in VR.** The menu's Close tile shows the build (commit and time), as the start screen already did, so you can see which one you're playing.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.
