@@ -30,6 +30,8 @@ export class CrewRoom extends Room<{ state: CrewState }> {
   private readonly progress = new Map<string, LevelProgress>()
   /** Shared puzzle props (e.g. "level3/shell0" → its angle): latest value, for everyone and late joiners. */
   private readonly props = new Map<string, number[]>()
+  /** The level the crew is on (set by whoever last moved on). */
+  private crewStage = ''
   private clayId = 0
   private crackerId = 0
   private lastPull = 0
@@ -60,12 +62,32 @@ export class CrewRoom extends Room<{ state: CrewState }> {
       if (!player) return
       if (msg?.name !== undefined) player.name = cleanName(msg.name, player.name)
       // One of each class among the humans; bots take whatever's left.
+      // Asking for a class another player has swaps it with them (switch any time, any crew size).
       const wanted = msg?.character as CharacterClass
       if (CLASSES.includes(wanted) && wanted !== player.character) {
         const others = this.seats().filter((h) => h.id !== client.sessionId)
         if (freeClass(others, wanted) === wanted) player.character = wanted
-        else client.send('characterDenied', { character: wanted })
+        else {
+          const holderId = others.find((h) => h.connected && h.character === wanted)?.id
+          const holder = holderId ? this.state.players.get(holderId) : undefined
+          if (!holder || !holderId) return void client.send('characterDenied', { character: wanted })
+          holder.character = player.character
+          player.character = wanted
+          this.clients.find((c) => c.sessionId === holderId)?.send('classSwapped', { character: holder.character, by: player.name })
+          client.send('classChanged', { character: wanted, from: holder.name })
+        }
       }
+    })
+
+    // One crew, one level: when anyone moves on, everyone goes with them.
+    this.onMessage('goStage', (client, msg: { stage?: string }) => {
+      const stage = String(msg?.stage ?? '').slice(0, 16)
+      if (!stage || !this.player(client) || stage === this.crewStage) return
+      this.crewStage = stage
+      this.broadcast('crewStage', { stage, by: client.sessionId })
+    })
+    this.onMessage('whereIsCrew', (client) => {
+      if (this.crewStage) client.send('crewStage', { stage: this.crewStage })
     })
 
     // Bots run on the host's device (the connected human in the lowest slot); the server relays

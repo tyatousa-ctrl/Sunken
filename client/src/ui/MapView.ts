@@ -34,7 +34,7 @@ export class MapView {
   private readonly q = new THREE.Quaternion()
 
   constructor(
-    scene: THREE.Object3D,
+    private readonly scene: THREE.Object3D,
     private readonly audio: AudioSystem,
   ) {
     this.frontCanvas.width = 1024
@@ -103,6 +103,8 @@ export class MapView {
     this.group.visible = false
     this.holder = null
     this.stretcher = null
+    // Off the hand, back with the level (so it can't be left stuck on a controller).
+    this.scene.add(this.group)
   }
 
   update(hands: Hand[]): void {

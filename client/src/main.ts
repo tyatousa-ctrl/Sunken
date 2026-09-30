@@ -24,16 +24,8 @@ function makeStage(id: string) {
   return id === 'sandbox' ? new DiveStage(game) : id === 'level1' ? new Level1Stage(game, false) : id === 'level2' ? new Level2Stage(game) : id === 'level3' ? new Level3Stage(game) : id === 'level4' ? new Level4Stage(game) : id === 'vault' ? new VaultStage(game) : new IntroStage(game)
 }
 game.start(makeStage(startAt))
-// Testing: jump to any level from inside the game (both thumbsticks, or L on desktop).
-game.levelHop.setTargets([
-  { label: 'Deck', make: () => makeStage('intro') },
-  { label: 'Level 1', make: () => makeStage('level1') },
-  { label: 'Level 2', make: () => makeStage('level2') },
-  { label: 'Level 3', make: () => makeStage('level3') },
-  { label: 'Level 4', make: () => makeStage('level4') },
-  { label: 'Vault', make: () => makeStage('vault') },
-  { label: 'Sandbox', make: () => makeStage('sandbox') },
-])
+// The in-game menu's level tiles, and following the crew, build stages by id.
+game.stageFactory = makeStage
 
 const startSelect = document.getElementById('opt-start') as HTMLSelectElement
 startSelect.value = ['intro', 'level1', 'level2', 'level3', 'level4', 'vault', 'sandbox'].includes(startAt) ? startAt : 'intro'
@@ -154,7 +146,8 @@ async function joinCrew(mode: JoinMode): Promise<void> {
     const state = net.state
     const shipGone = state?.attackAt && (net.serverNow() - state.attackAt) / 1000 > ATTACK_SECONDS
     const chosen = startSelect.value
-    game.goTo(() => (chosen !== 'intro' ? makeStage(chosen) : shipGone ? new Level1Stage(game, false) : new IntroStage(game)))
+    // (Once the crew has moved on, the game takes you to wherever they are.)
+    game.goTo(() => (chosen !== 'intro' ? makeStage(chosen) : shipGone ? new Level1Stage(game, false) : new IntroStage(game)), { announce: false })
     leaveButton.hidden = false
     showCrew()
   } catch (err) {

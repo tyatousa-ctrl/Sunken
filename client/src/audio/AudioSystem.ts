@@ -51,6 +51,7 @@ export class AudioSystem {
       band.Q.value = 0.8
       sound.setFilter(band)
       sound.play()
+      sound.userData.fixture = true
       hand.grip.add(sound)
       this.hiss.set(hand, sound)
     }

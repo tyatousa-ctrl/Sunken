@@ -240,7 +240,14 @@ export abstract class DiveLevel implements Stage {
     })
   }
 
+  /** The menu's "Empty my hands": the map and backpack close too. */
+  emptyHands(): void {
+    this.map.close()
+    if (this.backpack.isOpen) this.backpack.close()
+  }
+
   exit(): void {
+    this.map.close()
     for (const off of this.unsubscribe) off()
     this.game.scene.remove(this.root)
     disposeTree(this.root)

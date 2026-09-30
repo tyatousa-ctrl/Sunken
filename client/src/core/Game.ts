@@ -10,7 +10,9 @@ import { Player } from '../movement/Player'
 import { FpsOverlay } from '../ui/FpsOverlay'
 import { Hud } from '../ui/Hud'
 import { GogglesDisplay } from '../ui/GogglesDisplay'
-import { LevelHop } from '../ui/LevelHop'
+import { GameMenu, type MenuItem, type MenuSection } from '../ui/GameMenu'
+import { CLASSES, CLASS_NAMES, type CharacterClass } from '../systems/crew'
+import { saveSettings } from './settings'
 import { WristComputer } from '../ui/WristComputer'
 import type { Settings } from './settings'
 import { Inventory } from '../systems/Inventory'
@@ -39,8 +41,14 @@ export class Game implements GameContext {
   readonly hud: Hud
   readonly wrist: WristComputer
   readonly goggles: GogglesDisplay
-  /** Testing: both thumbsticks (L on desktop) to jump to any level. */
-  readonly levelHop: LevelHop
+  /** Right thumbstick (Tab on desktop): empty your hands, switch class, hop to a level. */
+  readonly menu: GameMenu
+  /** Makes a fresh stage by id ('intro', 'level1' … 'vault', 'sandbox'); set by main. */
+  stageFactory: ((id: string) => Stage) | null = null
+  /** Where the crew is (the server's word): everyone goes where anyone moves on to. */
+  private crewStage: string | null = null
+  /** Tell the crew when the stage we're fading to is entered (off for following and for joining). */
+  private announce = true
   readonly desktop: DesktopControls
   readonly record: RunRecord = { whoShotFirst: null, clayHits: 0, clayShots: 0, bullseyeBeforeBattle: false }
   // Single player plays the Strongman until character selection arrives with the lobby.
@@ -102,7 +110,7 @@ export class Game implements GameContext {
     this.wrist = new WristComputer(this.controllers.leftGrip)
     this.goggles = new GogglesDisplay(this.camera)
     this.audio = new AudioSystem(this.camera, this.scene, this.controllers.hands)
-    this.levelHop = new LevelHop(this.scene, this.audio)
+    this.menu = new GameMenu(this.scene, this.audio, () => this.menuItems())
     this.audio.setAmbience(settings.ambience)
     this.hud = new Hud(this.scene, this.camera)
     this.guide = new ControllerGuide(this.controllers.leftGrip, this.controllers.rightGrip)
@@ -162,6 +170,25 @@ export class Game implements GameContext {
       this.bots.command(msg.botId, msg.command, msg.target ? new THREE.Vector3().fromArray(msg.target) : null, msg.from),
     )
     net.on<{ character: string }>('characterDenied', () => this.hud.now('Someone in the crew already has that class.', 3))
+    net.on<{ character: string; by: string }>('classSwapped', (msg) => {
+      const cls = msg.character as CharacterClass
+      this.hud.now(`${msg.by} swapped classes with you: you're the ${CLASS_NAMES[cls] ?? cls} now.`, 5)
+    })
+    net.on<{ character: string; from?: string }>('classChanged', (msg) => {
+      const cls = msg.character as CharacterClass
+      this.hud.now(msg.from ? `You and ${msg.from} swapped: you're the ${CLASS_NAMES[cls] ?? cls} now.` : `You're the ${CLASS_NAMES[cls] ?? cls} now.`, 4)
+    })
+    // One crew, one level: whoever moves on takes everyone with them.
+    net.on<{ stage: string; by?: string }>('crewStage', (msg) => {
+      if (!msg.stage) return
+      const moving = this.crewStage !== null && msg.stage !== this.crewStage && msg.stage !== this.stage?.id && msg.by && msg.by !== net.sessionId
+      this.crewStage = msg.stage
+      if (moving) {
+        const who = net.roster().find((p) => p.sessionId === msg.by)?.name ?? 'A crewmate'
+        this.hud.now(`${who} went on ahead. The crew goes together!`, 4)
+      }
+    })
+    net.send('whereIsCrew', {})
     net.on<{ from: string }>('shareAir', (msg) => {
       this.player.refillFull()
       const who = net.roster().find((p) => p.sessionId === msg.from)?.name ?? 'A bot'
@@ -170,10 +197,98 @@ export class Game implements GameContext {
     this.hud.now(`You're in crew ${net.code}. Share the code so friends can join.`, 6)
   }
 
-  goTo(next: () => Stage): void {
+  /** `announce: false` for a move the crew shouldn't follow (following them, or joining them). */
+  goTo(next: () => Stage, options?: { announce?: boolean }): void {
     if (this.pending) return
     this.pending = next
+    this.announce = options?.announce ?? true
     this.fadeDir = 1
+  }
+
+  /** Put down whatever is in both hands, close the map and backpack, and strip anything left stuck to them. */
+  emptyHands(): void {
+    const still = new THREE.Vector3()
+    for (const hand of [...this.controllers.hands, this.desktop.hand]) {
+      const held = hand.held
+      hand.held = null
+      hand.anchor = null
+      if (held) {
+        try {
+          held.release(hand, still)
+        } catch (err) {
+          console.warn('emptyHands: release failed', err)
+        }
+      }
+    }
+    this.stage?.emptyHands?.()
+    this.sweepHands()
+    this.player.riding = false
+  }
+
+  /** Anything on a controller that isn't part of the hand itself (a stale map, a lost prop) goes. */
+  private sweepHands(): void {
+    for (const hand of [...this.controllers.hands, this.desktop.hand]) {
+      for (const child of [...hand.grip.children]) if (!child.userData.fixture) child.removeFromParent()
+    }
+  }
+
+  /** Switch class. In a crew, a class another player has is swapped with them. */
+  chooseClass(cls: CharacterClass): void {
+    if (this.net) this.net.send('profile', { character: cls })
+    else this.party.character = cls
+    this.settings.character = cls
+    saveSettings(this.settings)
+    this.hud.now(`You're the ${CLASS_NAMES[cls]} now.`, 3)
+  }
+
+  private menuItems(): { sections: MenuSection[]; items: MenuItem[] } {
+    const net = this.net
+    const holder = (cls: CharacterClass) => net?.roster().find((p) => p.connected && p.sessionId !== net.sessionId && p.character === cls)?.name
+    const items: MenuItem[] = [
+      { row: 0, key: 'H', label: 'Empty my hands', sub: 'Drop everything, close the map', action: () => {
+        this.emptyHands()
+        this.hud.now('Hands empty.', 2)
+      } },
+    ]
+    CLASSES.forEach((cls, i) => {
+      const mine = this.party.character === cls
+      const other = holder(cls)
+      items.push({
+        row: 1,
+        key: String(i + 1),
+        label: CLASS_NAMES[cls],
+        sub: mine ? 'You' : other ? `Swap with ${other}` : 'Free',
+        current: mine,
+        action: () => (mine ? undefined : this.chooseClass(cls)),
+      })
+    })
+    const levels: [string, string][] = [['intro', 'Deck'], ['level1', 'Level 1'], ['level2', 'Level 2'], ['level3', 'Level 3'], ['level4', 'Level 4'], ['vault', 'Vault'], ['sandbox', 'Sandbox']]
+    const keys = ['5', '6', '7', '8', '9', '0', '-']
+    levels.forEach(([id, label], i) => {
+      items.push({ row: i < 4 ? 2 : 3, key: keys[i], label, current: this.stage?.id === id, action: () => {
+        const make = this.stageFactory
+        if (make) this.goTo(() => make(id))
+      } })
+    })
+    items.push({ row: 4, key: 'Tab', label: 'Close', action: () => {} })
+    return {
+      sections: [
+        { row: 1, title: 'Your class' },
+        { row: 2, title: net ? 'Go to a level (the whole crew comes)' : 'Go to a level' },
+      ],
+      items,
+    }
+  }
+
+  /** The crew moved on while we weren't looking: go too. */
+  private followCrew(): void {
+    const target = this.crewStage
+    const stage = this.stage
+    if (!this.net || !target || !stage || this.pending || stage.id === target || !this.stageFactory) return
+    this.menu.close()
+    if (stage.followCrew?.(target)) return
+    const make = this.stageFactory
+    this.goTo(() => make(target), { announce: false })
   }
 
   private tick(time: number): void {
@@ -187,7 +302,8 @@ export class Game implements GameContext {
       this.desktop.update()
       this.desktop.hand.update(dt)
     }
-    this.levelHop.update(dt, this.hands, this.camera, (make) => this.goTo(make))
+    this.menu.update(dt, this.hands, this.camera)
+    this.followCrew()
     this.stage?.update(dt, time / 1000)
     this.bots.update(dt, this.stage)
     this.botCommands.update(dt)
@@ -318,11 +434,19 @@ export class Game implements GameContext {
     if (this.fadeDir === 0) return
     this.vignette.transition = THREE.MathUtils.clamp(this.vignette.transition + (this.fadeDir * dt) / FADE_SECONDS, 0, 1)
     if (this.fadeDir > 0 && this.vignette.transition >= 1 && this.pending) {
+      // Nothing from the old stage stays in your hands (or stuck to them).
+      this.emptyHands()
+      this.menu.close()
       this.stage?.exit()
       this.stage = this.pending()
       this.pending = null
       this.stage.enter()
       this.fadeDir = -1
+      if (this.announce && this.net) {
+        this.crewStage = this.stage.id
+        this.net.send('goStage', { stage: this.stage.id })
+      }
+      this.announce = true
     } else if (this.fadeDir < 0 && this.vignette.transition <= 0) {
       this.fadeDir = 0
     }

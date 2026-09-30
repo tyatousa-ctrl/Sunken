@@ -354,6 +354,14 @@ Fixed:
 - **Level 2 door in a crew.** If the dials reached 2 C ! before the server had registered that the door was found, the door never opened (solo it was fine). The level now retries until the door opens.
 - **Save after Level 4** now records the vault as the next stage, instead of a "level5" that doesn't exist.
 
+## Menu, empty hands, one crew one level
+
+- **Menu.** Click the right thumbstick (Tab on desktop; both sticks together still works) and a panel appears in front of you. Touch a tile (or press its key): **Empty my hands**, the four **classes**, or **go to a level**. Click again, touch Close, or move away to put it away. It replaces the old level-hop panel.
+- **Empty my hands (fail-safe).** Lets go of whatever both hands hold (things go back where they belong), closes the map and backpack, and strips anything left stuck to a controller.
+- **The map that wouldn't go away.** An open map stayed attached to your controller when the level changed, and the new level's A/X only knew about its own map. The map now comes off your hand whenever it's closed, both hands are emptied on every level change, and anything left on a controller is cleared then too.
+- **Switch class any time.** From the menu, solo or in a crew. In a crew, picking a class another player has swaps it with them; both are told.
+- **One crew, one level.** When anyone moves on (through the arch, over the side, or by the menu), the whole crew goes with them, with a message saying who went ahead. Anyone still on deck when someone dives is washed overboard with their gear on. Someone joining late goes straight to where the crew is. (The server remembers the crew's level.)
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.

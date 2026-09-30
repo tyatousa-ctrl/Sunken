@@ -17,8 +17,6 @@ import { AboveWater } from '../world/above/Coast'
 import { CREW_BOARD_SPOT, CrewBoard } from '../intro/CrewBoard'
 import type { BotWorld } from '../bots/world'
 import type { CharacterClass } from '../systems/crew'
-import { CLASS_NAMES } from '../systems/crew'
-import { saveSettings } from '../core/settings'
 import { CABIN_FRONT_Z, DECK_Y, Galleon, STERN_Z } from '../world/ship/Galleon'
 import { NET_OBSTACLES, Rigging, netObstacles, type RigSpec } from '../intro/Rigging'
 import { NestRope } from '../intro/NestRope'
@@ -352,15 +350,14 @@ export class IntroStage implements Stage {
   }
 
   private chooseClass(cls: CharacterClass): void {
-    const { game } = this
-    if (game.net) {
-      game.net.send('profile', { character: cls })
-    } else {
-      game.party.character = cls
-    }
-    game.settings.character = cls
-    saveSettings(game.settings)
-    game.hud.now(`You're the ${CLASS_NAMES[cls]} now.`, 3)
+    this.game.chooseClass(cls)
+  }
+
+  /** The crew dived: whoever's still on deck goes over the side with their gear on. */
+  followCrew(id: string): boolean {
+    if (id !== 'level1') return false
+    this.overboard()
+    return true
   }
 
   /** Bots walk the deck with the crew and go over the side when it's time. */

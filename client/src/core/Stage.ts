@@ -63,8 +63,12 @@ export interface GameContext {
   readonly inXr: boolean
   /** Half the render-target height in pixels, for particle sizing. */
   readonly halfHeight: number
-  /** Fade to black, swap to the next stage, fade back in. */
-  goTo(next: () => Stage): void
+  /** Switch class (in a crew, swapping with whoever has it). */
+  chooseClass(cls: CharacterClass): void
+  /** Drop everything in both hands, close the map and backpack. */
+  emptyHands(): void
+  /** Fade to black, swap to the next stage, fade back in (the crew follows unless `announce` is false). */
+  goTo(next: () => Stage, options?: { announce?: boolean }): void
 }
 
 /** One chunk of the game (the ship deck, an underwater level). Owns everything under `root`. */
@@ -77,6 +81,10 @@ export interface Stage {
   exit(): void
   /** What the buttons do right now, for the controller guide. */
   guide?(): ButtonGuide | null
+  /** Let go of anything stage-specific the hands have (the map, the backpack). */
+  emptyHands?(): void
+  /** The crew went to `id`: go there your own way (washed overboard from the deck); false to use the default. */
+  followCrew?(id: string): boolean
   /** The stage sets its own look above and below the water (the game leaves fog and sky alone). */
   readonly ownsWaterLook?: boolean
 }

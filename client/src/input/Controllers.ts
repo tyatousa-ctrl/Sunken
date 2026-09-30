@@ -28,7 +28,7 @@ export class Controllers {
       rig.add(ray)
 
       const grip = renderer.xr.getControllerGrip(i)
-      if (modelFactory) grip.add(modelFactory.createControllerModel(grip))
+      if (modelFactory) grip.add(fixture(modelFactory.createControllerModel(grip)))
       rig.add(grip)
 
       const handModel = renderer.xr.getHand(i)
@@ -41,13 +41,13 @@ export class Controllers {
       grip.addEventListener('connected', (event) => {
         hand.source = event.data
         hand.handedness = event.data.handedness
-        grip.add(hand.handedness === 'left' ? this.leftGrip : this.rightGrip)
+        grip.add(fixture(hand.handedness === 'left' ? this.leftGrip : this.rightGrip))
         // A gloved hand in place of the controller (tracked hands draw themselves).
         this.models.get(hand)?.group.removeFromParent()
         const model = new HandModel(hand.handedness === 'left' ? 'left' : 'right')
         model.setGlove(this.glove)
         model.group.visible = !event.data.hand
-        grip.add(model.group)
+        grip.add(fixture(model.group))
         this.models.set(hand, model)
       })
       grip.addEventListener('disconnected', () => {
@@ -91,4 +91,10 @@ function makePointer(): THREE.Line {
   const line = new THREE.Line(geometry, material)
   line.scale.z = 0.6
   return line
+}
+
+/** Part of the hand itself (model, mounts, sounds): "empty your hands" never strips it off. */
+export function fixture<T extends THREE.Object3D>(object: T): T {
+  object.userData.fixture = true
+  return object
 }
