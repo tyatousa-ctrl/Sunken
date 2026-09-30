@@ -31,6 +31,7 @@ import { LooseItem } from '../interaction/LooseItem'
 import { makeItem } from '../systems/items'
 import { DECK_ROUTE, POLLY_ROUTE, Zipline, type ZiplineRoute } from '../intro/Zipline'
 import { TitanicBow } from '../intro/TitanicBow'
+import { RAT_GAME_AT, WhackARat } from '../intro/WhackARat'
 import { Level1Stage } from './Level1Stage'
 import { deckHalfWidth, DECK_BOW_Z, FOREMAST_Z, STRETCH } from '../intro/deck'
 
@@ -63,6 +64,8 @@ const OBSTACLES: Obstacle[] = [
   { x: 0, z: FOREMAST_Z, r: 0.45 },
   { x: TABLE_POSITION.x, z: TABLE_POSITION.z, r: 0.75 },
   ...gearObstacles(),
+  // The Whack-a-Rat box amidships.
+  ...[-0.55, 0, 0.55].map((dz) => ({ x: RAT_GAME_AT.x, z: RAT_GAME_AT.z + dz, r: 0.45 })),
   { x: deckHalfWidth(CLAY_Z) - 0.5, z: CLAY_Z, r: 0.45 },
   { x: GUN_RACK.x, z: GUN_RACK.z, r: 0.6 },
   { x: BARREL_POSITION.x, z: BARREL_POSITION.z, r: 0.6 },
@@ -115,6 +118,8 @@ export class IntroStage implements Stage {
   private range!: ClayRange
   private crew!: Crew
   private swords!: Swords
+  /** Whack-a-Rat, amidships. */
+  private rats!: WhackARat
   /** The bow: bowsprit, and Rose to fly with. */
   private bow!: TitanicBow
   private swivelKey!: LooseItem
@@ -258,6 +263,7 @@ export class IntroStage implements Stage {
     this.grab.add(new CrackerPack(this.quarterdeck.table, this.polly, game.audio))
     this.gear = new GearRack(this.ship, this.grab, game.camera, game.audio, (hand) => this.grab.drop(hand))
     this.gear.onChange = (piece) => this.onGear(piece)
+    this.rats = new WhackARat(this.ship, this.grab, { audio: game.audio, sparks: this.fire, now: () => game.net?.serverNow() ?? performance.now() })
     this.gear.onLocked = (hand) => {
       hand.pulse(0.2, 40)
       game.hud.now('The scuba gear is chained up. No need for it on a fine day like this… yet.', 3)
@@ -342,6 +348,7 @@ export class IntroStage implements Stage {
 
     this.syncNet(dt)
     this.swords.update(dt, game.halfHeight)
+    this.rats.update(dt, game.hands, game.camera)
     if (this.phase !== 'overboard') this.bow.update(dt, game.camera.getWorldPosition(this.v), game.hands, game.camera, () => this.kingOfTheWorld(null))
     this.swords.face(game.camera)
     for (const z of this.ziplines) z.face(game.camera)
@@ -486,6 +493,9 @@ export class IntroStage implements Stage {
       if (msg.k === 0 && msg.p && msg.v) this.darts.remoteThrow(msg.i, new THREE.Vector3().fromArray(msg.p), new THREE.Vector3().fromArray(msg.v))
       else if (msg.k === 1) this.darts.remoteLanded(msg.i, msg.at ? new THREE.Vector2().fromArray(msg.at) : null)
     })
+    // Whack-a-Rat: one round, one score, for the whole crew.
+    this.rats.onStart = (seed, startAt) => net.send('prop', { key: 'intro/rats', v: [seed, startAt] })
+    this.rats.onHit = (i, startAt) => net.send('prop', { key: 'intro/ratHit', v: [i, startAt] })
     // Scuba gear: a piece someone puts on is gone from the rack for everyone.
     this.gear.onTaken = (set, piece) => net.send('prop', { key: `intro/gear/${set}/${piece}`, v: [1] })
     // The clay switches are shared: flipping one flips it for everybody.
@@ -494,6 +504,8 @@ export class IntroStage implements Stage {
     on<{ key: string; v: number[]; by?: string }>('prop', (msg) => {
       const sw = switches[msg.key as keyof typeof switches]
       if (sw) sw.show(msg.v[0] === 1 ? 1 : 0)
+      if (msg.key === 'intro/rats') this.rats.start(msg.v[0], msg.v[1])
+      if (msg.key === 'intro/ratHit') this.rats.hitRemote(msg.v[0], msg.v[1])
       const gear = /^intro\/gear\/(\d)\/(tank|mask|fins)$/.exec(msg.key)
       if (gear) this.gear.takenElsewhere(Number(gear[1]), gear[2] as GearPiece)
       if (msg.key === 'intro/darts') this.darts.setMode(modes[msg.v[0]] ?? '301', msg.v[1] === 1)

@@ -3,6 +3,7 @@
 
 export type SfxName =
   | 'wind'
+  | 'squeak'
   | 'gunshot'
   | 'cannon'
   | 'crack'
@@ -45,6 +46,7 @@ interface Recipe {
 }
 
 const RECIPES: Record<SfxName, Recipe> = {
+  squeak: { seconds: 0.2, tone: [2600, 3500, 0.5], vibrato: [40, 380], attack: 0.005, decay: 0.06, gain: 0.3 },
   wind: { seconds: 2.6, noise: 1, lowpass: 900, highpass: 160, attack: 0.7, decay: 0.8, gain: 0.55 },
   gunshot: { seconds: 2.2, noise: 1, lowpass: 2600, thump: [70, 0.8], decay: 0.12, echoes: [[0.42, 0.28], [0.95, 0.12]], gain: 0.9 },
   cannon: { seconds: 3.5, noise: 1, lowpass: 700, thump: [42, 1.2], decay: 0.45, echoes: [[0.6, 0.3], [1.4, 0.15]], gain: 1 },
