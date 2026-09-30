@@ -1,5 +1,6 @@
 import type { ButtonGuide } from '../ui/ControllerGuide'
 import * as THREE from 'three'
+import { HeldSync, syncAll } from '../net/HeldSync'
 import type { MapArea } from '../ui/MiniMap'
 import { disposeTree, type GameContext, type Stage } from '../core/Stage'
 import { Particles } from '../fx/Particles'
@@ -87,6 +88,8 @@ export class IntroStage implements Stage {
   private readonly debris = new Particles({ max: 400, gravity: -9.8, drag: 0.3 })
   private readonly splash = new Particles({ max: 400, gravity: -9.8, drag: 0.4 })
   // The rigging net is a handhold: grip it to climb.
+  /** Held things shown in crewmates' hands. */
+  private heldSync: HeldSync | null = null
   private readonly grab = new GrabSystem({ rocks: [], climb: (p) => this.rigs?.some((r) => r.onNet(p, 0.12)) ?? false })
   /** The main mast's net and nest (aft of it); `rigs` also has the foremast's (forward of it). */
   private rigging!: Rigging
@@ -298,6 +301,12 @@ export class IntroStage implements Stage {
   }
 
   update(dt: number, elapsed: number): void {
+    // What anyone holds, everyone sees (set up once the stage is built and we're in a crew).
+    if (!this.heldSync && this.game.net) {
+      this.heldSync = new HeldSync(this.game, this.id)
+      syncAll(this.heldSync, this.id, this.grab.items)
+    }
+    this.heldSync?.update(dt)
     const { game } = this
     game.player.update(dt, game.inXr, game.desktop)
     this.gear.update()
@@ -332,6 +341,7 @@ export class IntroStage implements Stage {
   }
 
   exit(): void {
+    this.heldSync?.dispose()
     for (const off of this.unsubscribe) off()
     this.game.hud.clear()
     this.game.vignette.drunk = 0

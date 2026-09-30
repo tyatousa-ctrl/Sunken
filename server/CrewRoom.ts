@@ -179,6 +179,21 @@ export class CrewRoom extends Room<{ state: CrewState }> {
       if (typeof msg?.id === 'string' && msg.id.startsWith('sword')) this.broadcast('swordHand', { id: msg.id.slice(0, 16), hand: msg.hand === 0 ? 0 : 1 }, { except: client })
     })
 
+    // What each player's hands hold (a mug, a match, a dart): shown in their avatar's hands for everyone else.
+    this.onMessage('held', (client, msg: { stage?: string; items?: unknown[] }) => {
+      if (!this.player(client) || !Array.isArray(msg?.items)) return
+      const nums = (a: unknown, n: number) => (Array.isArray(a) && a.length === n && a.every((x) => Number.isFinite(x)) ? (a as number[]) : null)
+      const items = msg.items.slice(0, 4).flatMap((raw) => {
+        const e = raw as { id?: unknown; h?: unknown; p?: unknown; q?: unknown; s?: unknown }
+        const p = nums(e?.p, 3)
+        const q = nums(e?.q, 4)
+        const st = Array.isArray(e?.s) ? (e.s as unknown[]).slice(0, 4).map(Number).filter(Number.isFinite) : []
+        if (typeof e?.id !== 'string' || !p || !q) return []
+        return [{ id: e.id.slice(0, 40), h: e.h === 0 ? 0 : 1, p, q, s: st }]
+      })
+      this.broadcast('held', { by: client.sessionId, stage: String(msg.stage ?? '').slice(0, 16), items }, { except: client })
+    })
+
     // Shared objects: first grab wins.
     this.onMessage('claim', (client, msg: { id?: string }) => {
       const id = typeof msg?.id === 'string' ? msg.id.slice(0, 32) : ''

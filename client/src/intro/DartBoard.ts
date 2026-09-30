@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import type { HeldAdapter, HeldSyncable } from '../net/HeldSync'
 import type { AudioSystem } from '../audio/AudioSystem'
 import type { Particles } from '../fx/Particles'
 import type { Hand } from '../input/Hand'
@@ -356,7 +357,7 @@ function hitBoard(a: THREE.Vector3, b: THREE.Vector3, target: THREE.Vector2): TH
   return target.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
 }
 
-class Dart implements Interactable {
+export class Dart implements Interactable, HeldSyncable {
   readonly object = new THREE.Group()
   state: DartState = 'rack'
   private readonly velocity = new THREE.Vector3()
@@ -407,6 +408,20 @@ class Dart implements Interactable {
     this.rack = rack
     this.slot = slot
     this.returnToRack()
+  }
+
+  takenElsewhere = false
+
+  /** In a crewmate's hand: this dart (and gone from where it was here). */
+  heldAdapter(): HeldAdapter {
+    return {
+      heldBy: () => this.holder,
+      shown: () => this.object,
+      taken: (on) => {
+        this.takenElsewhere = on
+        this.object.visible = !on
+      },
+    }
   }
 
   grabGap(point: THREE.Vector3): number {

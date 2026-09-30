@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import type { HeldAdapter, HeldSyncable } from '../net/HeldSync'
 import type { AudioSystem } from '../audio/AudioSystem'
 import type { Particles } from '../fx/Particles'
 import type { Hand } from '../input/Hand'
@@ -181,11 +182,12 @@ export class BeerBarrel {
   }
 }
 
-export class Mug implements Interactable {
+export class Mug implements Interactable, HeldSyncable {
   readonly object = new THREE.Group()
   /** 0 empty – 1 full. */
   fill = 0
   heldBy: Hand | null = null
+  takenElsewhere = false
   /** Has been drunk from since it was picked up (keeps the sign on step 3 while you sip). */
   drank = false
   private readonly beer: THREE.Mesh
@@ -313,11 +315,21 @@ export class Mug implements Interactable {
   }
 
   private updateLiquid(): void {
-    const level = Math.max(0.001, this.fill) * 0.115
-    this.beer.visible = this.foam.visible = this.fill > 0.01
-    this.beer.scale.y = level
-    this.beer.position.y = 0.006 + level / 2
-    this.foam.position.y = 0.006 + level + 0.009
+    showLiquid(this.object, this.fill)
+  }
+
+  /** In a crewmate's hand: the mug, filled as much as theirs. */
+  heldAdapter(): HeldAdapter {
+    return {
+      heldBy: () => this.heldBy,
+      shown: () => this.object,
+      state: () => [Math.round(this.fill * 20) / 20],
+      apply: (proxy, s) => showLiquid(proxy, s[0] ?? 0),
+      taken: (on) => {
+        this.takenElsewhere = on
+        this.object.visible = !on
+      },
+    }
   }
 }
 
@@ -349,4 +361,16 @@ function makeHotSauce(): THREE.Group {
   label.position.y = 0.065
   group.add(body, shoulder, neck, cap, label)
   return group
+}
+
+/** A mug's beer and foam at a fill level (0–1): children 3 and 4 of the mug. */
+function showLiquid(mug: THREE.Object3D, fill: number): void {
+  const beer = mug.children[3]
+  const foam = mug.children[4]
+  if (!beer || !foam) return
+  const level = Math.max(0.001, fill) * 0.115
+  beer.visible = foam.visible = fill > 0.01
+  beer.scale.y = level
+  beer.position.y = 0.006 + level / 2
+  foam.position.y = 0.006 + level + 0.009
 }

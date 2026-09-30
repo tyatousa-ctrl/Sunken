@@ -374,6 +374,10 @@ Fixed:
 - **Front nest to the bow.** A new zipline from the front crow's nest down to the bow deck (and back up).
 - **The bow.** A bowsprit reaches out ahead of the ship, and you can walk right up into the bow's point. **Rose** stands at the tip in a plum dress and cream shawl, arms out over the sea. Stand behind her and spread your arms wide: a gust of wind, a rumble in both hands, "I'm the king of the world!" (spoken, where the browser has a voice) and Rose answers "I'm flying, Jack!". The crew sees and hears it too.
 
+## Everyone sees what you hold
+
+- **Held things are shared.** Whatever you pick up shows in your avatar's hand for the whole crew, where you hold it: a mug (filling as you pour, emptying as you drink), a match (burning once you strike it), a dart, the swivel key, the hot sauce, the tank, and in the dive levels the keys, starfish, pearl and anything else loose. Everyone else sees it gone from its place and can't grab it until you put it down. (Guns and swords already synced their own way.) Each device sends what its hands hold a few times a second while holding anything; the server relays it.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.

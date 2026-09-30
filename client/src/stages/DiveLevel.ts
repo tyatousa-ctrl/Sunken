@@ -1,5 +1,6 @@
 import type { ButtonGuide } from '../ui/ControllerGuide'
 import * as THREE from 'three'
+import { HeldSync, syncAll } from '../net/HeldSync'
 import { disposeTree, type GameContext, type Stage } from '../core/Stage'
 import type { Hand } from '../input/Hand'
 import { GrabSystem } from '../interaction/GrabSystem'
@@ -71,6 +72,8 @@ export abstract class DiveLevel implements Stage {
   protected magic!: Magic
   protected fish!: FishSchool
   protected grab!: GrabSystem
+  /** Held things shown in crewmates' hands. */
+  private heldSync: HeldSync | null = null
   protected gate!: ExitGate
   protected backpack!: Backpack
   protected map!: MapView
@@ -211,6 +214,12 @@ export abstract class DiveLevel implements Stage {
   }
 
   update(dt: number, elapsed: number): void {
+    // What anyone holds, everyone sees (set up once the stage is built and we're in a crew).
+    if (!this.heldSync && this.game.net && this.grab) {
+      this.heldSync = new HeldSync(this.game, this.id)
+      syncAll(this.heldSync, this.id, this.grab.items)
+    }
+    this.heldSync?.update(dt)
     const { game } = this
     this.time += dt
     this.skill.update(dt)
@@ -254,6 +263,7 @@ export abstract class DiveLevel implements Stage {
   }
 
   exit(): void {
+    this.heldSync?.dispose()
     this.map.close()
     for (const off of this.unsubscribe) off()
     this.game.scene.remove(this.root)

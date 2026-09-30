@@ -31,6 +31,8 @@ export interface Interactable {
   readonly object?: THREE.Object3D
   /** Set false for things that must not fly to the hand. */
   readonly pullable?: boolean
+  /** A crewmate is holding it: it can't be grabbed here. */
+  takenElsewhere?: boolean
 }
 
 /** An item flying from where it was to the hand that pulled it. */
@@ -137,6 +139,7 @@ export class GrabSystem {
     let best: Interactable | null = null
     let bestGap = hand.virtual ? VIRTUAL_REACH : GRAB_REACH
     for (const item of this.items) {
+      if (item.takenElsewhere) continue
       const gap = item.grabGap(this.handPos, hand)
       if (gap < bestGap) {
         bestGap = gap
@@ -154,7 +157,7 @@ export class GrabSystem {
     let bestScore = 1
     for (const item of this.items) {
       const object = item.object
-      if (!object || item.pullable === false || !object.visible || this.isBusy(item)) continue
+      if (!object || item.pullable === false || item.takenElsewhere || !object.visible || this.isBusy(item)) continue
       object.getWorldPosition(this.v)
       const along = this.v.sub(this.origin).dot(this.dir)
       if (along < 0 || along > PULL_REACH) continue

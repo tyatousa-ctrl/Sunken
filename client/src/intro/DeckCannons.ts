@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import type { HeldAdapter, HeldSyncable } from '../net/HeldSync'
 import type { AudioSystem } from '../audio/AudioSystem'
 import type { Particles } from '../fx/Particles'
 import type { Hand } from '../input/Hand'
@@ -344,7 +345,7 @@ export class SwivelGun {
 
 // The match box on the crate: grip it to take a match. The match stays in your hand until you let
 // go (then it's dropped and snuffed).
-export class MatchBox implements Interactable {
+export class MatchBox implements Interactable, HeldSyncable {
   readonly object: THREE.Group
   holder: Hand | null = null
   private readonly match = new THREE.Group()
@@ -388,6 +389,20 @@ export class MatchBox implements Interactable {
 
   get lit(): boolean {
     return this.holder !== null && this.burning > 0
+  }
+
+  /** In a crewmate's hand: a match, burning if theirs is (the box stays here for everyone). */
+  heldAdapter(): HeldAdapter {
+    return {
+      heldBy: () => this.holder,
+      shown: () => this.match,
+      state: () => [this.lit ? 1 : 0, this.head.visible ? 1 : 0],
+      apply: (proxy, s) => {
+        const flame = proxy.children.find((c) => (c as THREE.Sprite).isSprite)
+        if (flame) flame.visible = s[0] === 1
+        if (proxy.children[1]) proxy.children[1].visible = s[1] !== 0
+      },
+    }
   }
 
   /** The lit match's flame (world), or null. */
