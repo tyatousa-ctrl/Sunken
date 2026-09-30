@@ -93,6 +93,7 @@ export class Level2Stage extends DiveLevel {
   /** The hand holding the turtle's shell while you ride. */
   private riderHand: Hand | null = null
   private readonly turnedDials = new Set<number>()
+  private dialRetry = 0
   private wrongCooldown = 0
   private readonly current = new Particles({ max: 260, gravity: 0, drag: 0, blending: THREE.AdditiveBlending })
   private mapPiece!: THREE.Group
@@ -364,6 +365,14 @@ export class Level2Stage extends DiveLevel {
     if (!this.progress.done.has('findDoor') && head.distanceTo(this.door.center) < 6) {
       this.step('findDoor')
       game.hud.now('A door of stone, carved with a circle, a square and a triangle. Three stone dials stand before it.', 5)
+    }
+
+    // The right code is showing but the door hasn't registered it (in a crew the dials can settle
+    // before "found the door" comes back from the server): ask again, once a second.
+    this.dialRetry = Math.max(0, this.dialRetry - dt)
+    if (this.dialRetry === 0 && this.progress.nextStep?.id === 'dialNumber' && this.door.code === ANSWER && !this.door.dials.some((d) => d.held)) {
+      this.dialRetry = 1
+      this.step('dialNumber')
     }
 
     this.wrongCooldown = Math.max(0, this.wrongCooldown - dt)

@@ -423,7 +423,8 @@ export abstract class DiveLevel implements Stage {
     this.complete = true
     const { game } = this
     const next = this.nextStage()
-    const nextId = `level${Number(this.level.id.replace('level', '')) + 1}`
+    // After Level 4 comes the vault (the finale saves nothing further).
+    const nextId = this.level.id === 'level4' ? 'vault' : `level${Number(this.level.id.replace('level', '')) + 1}`
     game.party.checkpoint = nextId
     saveCheckpoint(game.party, game.record)
     const coins = this.collectibles.filter((c) => c.kind === 'coin' && !c.item.enabled).length

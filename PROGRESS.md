@@ -342,6 +342,17 @@ Fixed along the way:
 - **Swivel gun sign.** The "DON'T LIGHT THIS!" sign now comes down once the gun has been fired; it was left hanging over the gun during the battle, in front of the enemy ship. Crewmates who join after the shot don't see it either.
 - **Page icon.** An anchor icon, so browsers stop asking the server for a missing `favicon.ico`.
 
+## Whole-game playthroughs
+
+- **Solo, one sitting.** From the start menu through the deck, Levels 1–4 and the vault finale in one session, using real hand input: the swivel key into the padlock, a struck match to the touch hole, gearing up by hand (tank over the shoulder, mask to the face), walking over the rail, turning the Level 2 dials by gripping and twisting, turning the Level 3 shells, climbing out onto ledges, swimming the dark side tunnel to its gem, lighting the lanterns, the Fish Whisperer calming a moray, and climbing out of the vault lagoon with the pearl in the other hand. All five map pieces are collected and the victory board appears. No page errors.
+- **Two players together.** A crew with two players plays the whole game. Both see the swivel start the attack and who shot first, and everyone is a pirate on deck and in scuba once diving. Level 1 is solved by one player and seen by both. The crewmate who lags behind in Level 2 arrives to the door already open. One player's shells light the carving for the other. Map pieces are shared, and the vault chest opens only with both players' hands on the lid.
+- **Every stage** (plus the sandbox) loads without errors on desktop and in VR.
+
+Fixed:
+
+- **Level 2 door in a crew.** If the dials reached 2 C ! before the server had registered that the door was found, the door never opened (solo it was fine). The level now retries until the door opens.
+- **Save after Level 4** now records the vault as the next stage, instead of a "level5" that doesn't exist.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.
