@@ -33,6 +33,8 @@ export class CaptainsCabin {
   private keyRevealed = false
   private liftT = -1
   private lidT = -1
+  private hoard!: THREE.Group
+  private glow!: THREE.PointLight
   private readonly lid = new THREE.Group()
   private readonly figureheadStart = new THREE.Vector3()
 
@@ -109,8 +111,19 @@ export class CaptainsCabin {
     const chest = new THREE.Group()
     // Local -z (the lock side) faces the door.
     chest.position.copy(CABIN.chest)
-    const box = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.55), wood)
-    box.position.y = 0.25
+    // A hollow box (four walls and a floor), dark inside, so what's in it shows when the lid opens.
+    const inside = new THREE.MeshStandardMaterial({ color: 0x2a1a0e, roughness: 0.95, side: THREE.DoubleSide })
+    const box = new THREE.Group()
+    const panel = (w: number, h: number, d: number, x: number, y: number, z: number) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [wood, wood, wood, inside, wood, wood])
+      m.position.set(x, y, z)
+      box.add(m)
+    }
+    panel(0.9, 0.04, 0.55, 0, 0.02, 0) // floor
+    panel(0.9, 0.5, 0.04, 0, 0.25, -0.255) // front (lock side)
+    panel(0.9, 0.5, 0.04, 0, 0.25, 0.255) // back
+    panel(0.04, 0.5, 0.47, -0.43, 0.25, 0) // sides
+    panel(0.04, 0.5, 0.47, 0.43, 0.25, 0)
     const bandL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.52, 0.57), brass)
     bandL.position.set(-0.35, 0.25, 0)
     const bandR = bandL.clone()
@@ -129,15 +142,42 @@ export class CaptainsCabin {
     chest.add(this.lock)
     parent.add(chest)
 
-    // Inside the chest: map piece II on a small heap of coins.
+    // Inside the chest: a heap of gold with map piece II lying on top, a few coins and gems, and a
+    // warm glow that shows once the lid is up.
+    const gold = new THREE.MeshStandardMaterial({ color: 0xf2c230, metalness: 0.9, roughness: 0.3, emissive: 0x4a3200 })
+    this.hoard = new THREE.Group()
+    const heap = new THREE.Mesh(new THREE.SphereGeometry(0.4, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), gold)
+    heap.scale.set(1.02, 0.55, 0.6)
+    heap.position.y = 0.2
+    this.hoard.add(heap)
+    let seed = 7
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+    for (let i = 0; i < 14; i++) {
+      const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.006, 12), gold)
+      const x = (rand() - 0.5) * 0.7
+      const z = (rand() - 0.5) * 0.36
+      coin.position.set(x, 0.2 + 0.2 * Math.sqrt(Math.max(0, 1 - (x / 0.41) ** 2 - (z / 0.24) ** 2)) + 0.01, z)
+      coin.rotation.set(rand() - 0.5, rand() * 3, rand() - 0.5)
+      this.hoard.add(coin)
+    }
+    for (const [x, z, color] of [[-0.28, 0.1, 0xe0284a], [0.3, -0.06, 0x2ad46a]] as const) {
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.035, 0), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.35, roughness: 0.1 }))
+      gem.position.set(x, 0.33, z)
+      this.hoard.add(gem)
+    }
+    this.glow = new THREE.PointLight(0xffc860, 0, 2.2, 1.5)
+    this.glow.position.set(0, 0.7, 0)
+    this.hoard.add(this.glow)
+    this.hoard.visible = false
+    chest.add(this.hoard)
     this.mapPiece = makeItem('mapPiece')
-    this.mapPiece.rotation.x = -Math.PI / 2 + 0.3
-    this.mapPiece.position.set(0, 0.42, 0)
+    this.mapPiece.rotation.x = -Math.PI / 2 + 0.35
+    this.mapPiece.position.set(0, 0.45, -0.02)
     this.mapPiece.visible = false
     chest.add(this.mapPiece)
     for (let i = 0; i < 3; i++) {
       const coin = makeItem('coin')
-      coin.position.set(-0.25 + i * 0.25, 0.36, 0.08)
+      coin.position.set(-0.25 + i * 0.25, 0.42, 0.1)
       coin.visible = false
       chest.add(coin)
       this.chestCoins.push(coin)
@@ -156,6 +196,7 @@ export class CaptainsCabin {
     if (this.unlocked) return
     this.unlocked = true
     this.lidT = 0
+    this.hoard.visible = true
     this.mapPiece.visible = true
     for (const c of this.chestCoins) c.visible = true
     this.audio.play('click', this.lock.getWorldPosition(new THREE.Vector3()))
@@ -181,7 +222,10 @@ export class CaptainsCabin {
     }
     if (this.lidT >= 0 && this.lidT < 1) {
       this.lidT = Math.min(1, this.lidT + dt / LID_SECONDS)
-      this.lid.rotation.x = -1.9 * (1 - Math.pow(1 - this.lidT, 3))
+      // Up and back on its hinges (it rests against the stern wall), light spilling out.
+      const u = 1 - Math.pow(1 - this.lidT, 3)
+      this.lid.rotation.x = 1.65 * u
+      this.glow.intensity = 1.6 * u
     }
   }
 }

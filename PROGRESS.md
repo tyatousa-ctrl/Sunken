@@ -213,6 +213,10 @@ Riddle: *"When noon's light swims through the door, blue shows the way the old o
 
 **Checked:** a full walkthrough in the emulator (the arch, tunnel, surfacing, the walls holding, climbing out, turning all three shells, the carving, the map piece, stepping off, the heave, out through the passage, the summary). Still to tune: the rippling light on the cave walls is too strong and even (a toned-down version is ready).
 
+## Level 1's chest opens properly
+
+The captain's chest was a solid block, and its lid swung the wrong way (down into the chest), so unlocking it showed nothing. It's now a hollow chest, dark inside; the lid swings up and back on its hinges to rest against the stern wall, and inside is a heap of gold coins with loose coins and two gems on it, map piece II lying on top, and a warm golden glow that brightens as the lid opens.
+
 ## The longer ship, the locked swivel gun, and the rigging
 
 - **Only the swivel gun starts the fight.** Shooting the ship in the bay with a blunderbuss (or hitting her with a deck cannon) now just knocks off a few splinters; the attack starts only when the quarterdeck's swivel gun hits her.
