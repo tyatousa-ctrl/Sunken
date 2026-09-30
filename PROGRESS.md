@@ -395,7 +395,7 @@ Fixed:
 
 ## Rat roast
 
-- **After Whack-a-Rat, roast your catch.** When a round ends, up to three of the rats you bonked lie knocked out on the box lid (X eyes, legs in the air). Beside the box there's a barrel fire (glowing coals, dancing flames, sparks) with an iron fork each side for a spit, and a bucket of skewers. Hold a skewer, touch a rat to its tip and it's on. Lay the skewer across the forks: it turns by itself over the flames, sizzling and smoking, and the rat goes from grey to golden brown in 10 seconds ("Ding!"). Take it off and hold it to your mouth: three crunchy bites, "Tastes like chicken." Raw rat is refused; left on 15 seconds too long, it's charcoal. In a crew everyone sees the catch, the skewers (and what's on them, in hand too) and the spit cooking in step.
+- **After Whack-a-Rat, roast your catch.** When a round ends, up to three of the rats you bonked lie knocked out on the box lid (X eyes, legs in the air); take one and another squeaks into its place a couple of seconds later. Beside the box there's a barrel fire (glowing coals, dancing flames, sparks) with an iron fork each side for a spit, and a bucket of skewers. Hold a skewer, touch a rat to its tip and it's on. Lay the skewer across the forks: it turns by itself over the flames, sizzling and smoking, and the rat goes from grey to golden brown in 10 seconds ("Ding!"). Take it off and hold it to your mouth: three crunchy bites, "Tastes like chicken." Raw rat is refused; left on 15 seconds too long, it's charcoal. In a crew everyone sees the catch, the skewers (and what's on them, in hand too) and the spit cooking in step.
 
 ## Decisions
 

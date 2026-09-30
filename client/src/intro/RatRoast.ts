@@ -24,6 +24,8 @@ const RAT_ON_STICK = 0.58
 /** Up to this many knocked-out rats lie on the box lid after a round. */
 const MAX_CATCH = 3
 const BITES = 3
+/** A rat taken off the lid is replaced by another this many seconds later. */
+const REPLACE_SECONDS = 2.5
 
 export interface RoastContext {
   audio: AudioSystem
@@ -61,6 +63,8 @@ export class RatRoast {
   private onSpitNow: Skewer | null = null
   private spitSince = 0
   private round = 0
+  /** Lid spots waiting for a fresh rat: seconds left (per catch). */
+  private readonly refill = new Map<number, number>()
   private time = 0
   private smokeTimer = 0
   private sizzleTimer = 0
@@ -159,6 +163,7 @@ export class RatRoast {
   /** A round of Whack-a-Rat started: the old catch is cleared away. */
   roundStarted(round: number): void {
     this.round = round
+    this.refill.clear()
     for (const c of this.catches) c.show(false)
   }
 
@@ -170,7 +175,9 @@ export class RatRoast {
 
   /** A crewmate skewered catch `i` of this round. */
   ratTakenRemote(i: number, round: number): void {
-    if (round === this.round) this.catches[i]?.show(false)
+    if (round !== this.round || !this.catches[i]) return
+    this.catches[i].show(false)
+    this.refill.set(i, REPLACE_SECONDS)
   }
 
   /** A crewmate's skewer changed (what's on it, how cooked, bites). */
@@ -194,6 +201,8 @@ export class RatRoast {
     const skewer = this.skewers.find((s) => s.phase === 'empty' && s.tip(tip).distanceTo(rat.object.getWorldPosition(new THREE.Vector3())) < 0.14)
     if (!skewer) return false
     rat.show(false)
+    // Another rat takes its place on the lid in a moment.
+    this.refill.set(rat.index, REPLACE_SECONDS)
     hand.held = null
     skewer.load()
     hand.pulse(0.6, 60)
@@ -244,6 +253,17 @@ export class RatRoast {
 
     for (const s of this.skewers) s.update(dt)
     for (const c of this.catches) c.update()
+    // Fresh rats for the spots that were taken (the same moment on every device: both count down).
+    for (const [i, left] of this.refill) {
+      if (left - dt > 0) {
+        this.refill.set(i, left - dt)
+        continue
+      }
+      this.refill.delete(i)
+      const c = this.catches[i]
+      c.show(true)
+      this.ctx.audio.play('squeak', c.object.getWorldPosition(this.v), 0.5)
+    }
 
     // Cooking: turning, colouring, sizzling and smoking on the spit.
     const s = this.onSpitNow
