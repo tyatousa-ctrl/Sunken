@@ -66,7 +66,7 @@ export class Bot {
     scene: THREE.Object3D,
   ) {
     this.avatar = new Avatar(member.color)
-    this.avatar.setInfo({ sessionId: member.id, name: member.name, color: member.color, connected: true, bot: true })
+    this.avatar.setInfo({ sessionId: member.id, name: member.name, color: member.color, connected: true, bot: true, character: member.character })
     scene.add(this.avatar.group)
     this.air = new AirTank(member.character === 'deepDiver' ? TUNING.airCapacity * 2 : TUNING.airCapacity)
     this.skill = new SkillCooldown(SKILLS[member.character].cooldown)

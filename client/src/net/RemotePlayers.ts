@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { CLASS_NAMES, type CharacterClass } from '../systems/crew'
 import type { NetClient } from './NetClient'
 import type { PoseArray, PosesBroadcast } from './protocol'
 
@@ -18,6 +19,8 @@ export interface AvatarInfo {
   color: string
   connected: boolean
   bot?: boolean
+  /** Their class, shown under the name. */
+  character?: string
 }
 
 // A crew member: a head, a body hanging below it, two hands and a name tag, dressed as a pirate on
@@ -146,9 +149,9 @@ export class Avatar {
     this.setOutfit('scuba')
 
     this.tagCanvas.width = 384
-    this.tagCanvas.height = 64
+    this.tagCanvas.height = 104
     this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(this.tagCanvas), depthTest: false, fog: false }))
-    this.tag.scale.set(0.6, 0.1, 1)
+    this.tag.scale.set(0.6, 0.1625, 1)
     this.tag.renderOrder = 700
     this.group.add(this.head, this.body, ...this.hands, this.tag)
   }
@@ -193,13 +196,15 @@ export class Avatar {
   setInfo(entry: AvatarInfo): void {
     this.color.color.set(entry.color)
     const text = entry.connected ? entry.name : `${entry.name} (reconnecting)`
-    if (text + entry.bot === this.tagText) return
-    this.tagText = text + entry.bot
+    const cls = entry.character ? (CLASS_NAMES[entry.character as CharacterClass] ?? entry.character) : ''
+    const key = `${text}|${entry.bot}|${cls}|${entry.color}`
+    if (key === this.tagText) return
+    this.tagText = key
     const ctx = this.tagCanvas.getContext('2d')!
-    ctx.clearRect(0, 0, 384, 64)
+    ctx.clearRect(0, 0, 384, 104)
     ctx.fillStyle = 'rgba(0,0,0,0.55)'
     ctx.beginPath()
-    ctx.roundRect(4, 8, 376, 48, 16)
+    ctx.roundRect(4, 8, 376, cls ? 88 : 48, 16)
     ctx.fill()
     let x = 192
     if (entry.bot) {
@@ -215,7 +220,13 @@ export class Avatar {
     ctx.fillStyle = entry.color
     ctx.font = `bold ${text.length > 18 ? 24 : 30}px system-ui, sans-serif`
     ctx.textAlign = 'center'
-    ctx.fillText(text, x, 44)
+    ctx.fillText(text, x, 44, 340)
+    // Their class underneath, for everyone to see.
+    if (cls) {
+      ctx.fillStyle = '#e8f1f5'
+      ctx.font = '24px system-ui, sans-serif'
+      ctx.fillText(cls, 192, 82, 340)
+    }
     ;(this.tag.material.map as THREE.Texture).needsUpdate = true
   }
 
@@ -227,7 +238,7 @@ export class Avatar {
     this.hands[1].position.set(pose[14], pose[15], pose[16])
     this.hands[1].quaternion.set(pose[17], pose[18], pose[19], pose[20])
     this.poseBody()
-    this.tag.position.set(pose[0], pose[1] + 0.32, pose[2])
+    this.tag.position.set(pose[0], pose[1] + 0.36, pose[2])
   }
 
   /**

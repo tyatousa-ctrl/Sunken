@@ -44,7 +44,7 @@ export class BotCrew {
     if (this.simulating) return []
     return this.members()
       .filter((m) => m.bot)
-      .map((m) => ({ sessionId: m.id, name: m.name, color: m.color, connected: true, bot: true }))
+      .map((m) => ({ sessionId: m.id, name: m.name, color: m.color, connected: true, bot: true, character: m.character }))
   }
 
   /** Seconds since the crew started (the clock bot commands run on). */

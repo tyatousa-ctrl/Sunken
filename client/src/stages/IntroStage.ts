@@ -14,7 +14,7 @@ import { BARREL_POSITION, BeerBarrel } from '../intro/BeerBarrel'
 import { BOARD_POSITION, DART_TEAMS, DartBoardArea, THROW_DISTANCE } from '../intro/DartBoard'
 import type { DartsMode } from '../intro/darts/DartsGame'
 import { DrunkState } from '../intro/drunk'
-import { GEAR_Z, GearRack, TABLE_POSITION, type GearPiece } from '../intro/GearRack'
+import { GEAR_SETS, GearRack, TABLE_POSITION, gearObstacles, type GearPiece } from '../intro/GearRack'
 import { Shotgun } from '../intro/Shotgun'
 import { AboveWater } from '../world/above/Coast'
 import { CREW_BOARD_SPOT, CrewBoard } from '../intro/CrewBoard'
@@ -62,7 +62,7 @@ const OBSTACLES: Obstacle[] = [
   { x: 0, z: 0, r: 0.45 },
   { x: 0, z: FOREMAST_Z, r: 0.45 },
   { x: TABLE_POSITION.x, z: TABLE_POSITION.z, r: 0.75 },
-  { x: -(deckHalfWidth(GEAR_Z) - 0.45), z: GEAR_Z, r: 0.5 },
+  ...gearObstacles(),
   { x: deckHalfWidth(CLAY_Z) - 0.5, z: CLAY_Z, r: 0.45 },
   { x: GUN_RACK.x, z: GUN_RACK.z, r: 0.6 },
   { x: BARREL_POSITION.x, z: BARREL_POSITION.z, r: 0.6 },
@@ -318,6 +318,8 @@ export class IntroStage implements Stage {
     this.heldSync?.update(dt)
     const { game } = this
     game.player.update(dt, game.inXr, game.desktop)
+    // Putting on whatever's missing reaches for your own class's set first.
+    this.gear.preferredSet = Math.max(0, GEAR_SETS.findIndex((g) => g.cls === game.party.character))
     this.gear.update()
     this.grab.update(dt, game.hands, game.player.physics.velocity, game.rig)
     this.range.update(dt)
@@ -484,12 +486,16 @@ export class IntroStage implements Stage {
       if (msg.k === 0 && msg.p && msg.v) this.darts.remoteThrow(msg.i, new THREE.Vector3().fromArray(msg.p), new THREE.Vector3().fromArray(msg.v))
       else if (msg.k === 1) this.darts.remoteLanded(msg.i, msg.at ? new THREE.Vector2().fromArray(msg.at) : null)
     })
+    // Scuba gear: a piece someone puts on is gone from the rack for everyone.
+    this.gear.onTaken = (set, piece) => net.send('prop', { key: `intro/gear/${set}/${piece}`, v: [1] })
     // The clay switches are shared: flipping one flips it for everybody.
     const switches = { 'intro/clayCount': this.range.countSwitch, 'intro/clayAuto': this.range.autoSwitch }
     for (const [key, sw] of Object.entries(switches)) sw.onFlip = (index) => net.send('prop', { key, v: [index] })
     on<{ key: string; v: number[]; by?: string }>('prop', (msg) => {
       const sw = switches[msg.key as keyof typeof switches]
       if (sw) sw.show(msg.v[0] === 1 ? 1 : 0)
+      const gear = /^intro\/gear\/(\d)\/(tank|mask|fins)$/.exec(msg.key)
+      if (gear) this.gear.takenElsewhere(Number(gear[1]), gear[2] as GearPiece)
       if (msg.key === 'intro/darts') this.darts.setMode(modes[msg.v[0]] ?? '301', msg.v[1] === 1)
       // A crewmate flew with Rose (recently: the prop cache replays old ones to late joiners).
       if (msg.key === 'intro/king' && net.serverNow() - msg.v[0] < 5000) {
