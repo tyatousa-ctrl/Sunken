@@ -76,6 +76,9 @@ export class WhackARat {
   onStart: (seed: number, startAt: number) => void = () => {}
   /** This device bonked rat `index` of the round: tell the crew. */
   onHit: (index: number, startAt: number) => void = () => {}
+  /** A round began / ended (on every device alike): the roast lays out the catch. */
+  onRoundStart: (startAt: number) => void = () => {}
+  onRoundEnd: (score: number, startAt: number) => void = () => {}
   readonly clubs: Club[] = []
   private readonly box = new THREE.Group()
   private readonly rats: Rat[] = []
@@ -209,6 +212,12 @@ export class WhackARat {
     this.finished = false
     this.lastScore = -1
     this.ctx.audio.play('whistle', this.button.getWorldPosition(this.v), 0.6)
+    this.onRoundStart(startAt)
+  }
+
+  /** The round that's playing (or last played): its start on the shared clock. */
+  get roundStart(): number {
+    return this.startAt
   }
 
   /** A crewmate bonked rat `index` of the round starting at `startAt`. */
@@ -266,6 +275,7 @@ export class WhackARat {
     if (!this.finished && elapsed > ROUND_SECONDS) {
       this.finished = true
       this.best = Math.max(this.best, this.score)
+      this.onRoundEnd(this.score, this.startAt)
       this.ctx.audio.play('pop', this.button.getWorldPosition(this.v), 0.8)
     }
     this.drawBoard(elapsed)

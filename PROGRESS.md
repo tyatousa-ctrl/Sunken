@@ -393,6 +393,10 @@ Fixed:
 - **Classes on name tags.** Every name tag (players and bots) shows the class under the name.
 - **Whack-a-Rat (amidships).** A wooden box with six holes and four belaying pins on its side, between the sword rack and the foremast. Grab a pin, slap the big red button, and after a 3-2-1 rats pop up for 30 seconds, faster as it goes: bonk them (a squeak, stars, a thump in your hand). The board shows the rats, the time left, and the best score of the voyage. In a crew everyone sees the same rats at the same moments, anyone can bonk them, and the crew shares the score.
 
+## Rat roast
+
+- **After Whack-a-Rat, roast your catch.** When a round ends, up to three of the rats you bonked lie knocked out on the box lid (X eyes, legs in the air). Beside the box there's a barrel fire (glowing coals, dancing flames, sparks) with an iron fork each side for a spit, and a bucket of skewers. Hold a skewer, touch a rat to its tip and it's on. Lay the skewer across the forks: it turns by itself over the flames, sizzling and smoking, and the rat goes from grey to golden brown in 10 seconds ("Ding!"). Take it off and hold it to your mouth: three crunchy bites, "Tastes like chicken." Raw rat is refused; left on 15 seconds too long, it's charcoal. In a crew everyone sees the catch, the skewers (and what's on them, in hand too) and the spit cooking in step.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.
