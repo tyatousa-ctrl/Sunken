@@ -49,7 +49,7 @@ export class MiniMap {
   private readonly probe = new Uint8Array(16)
   private readonly v = new THREE.Vector3()
 
-  constructor(camera: THREE.Camera) {
+  constructor(parent: THREE.Object3D) {
     const overlay = (color: number | THREE.Color, opacity = 1) =>
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, fog: false, toneMapped: false })
     // Frame, picture, then the dots on top.
@@ -93,7 +93,7 @@ export class MiniMap {
     this.group.rotation.set(-0.24, -0.36, 0, 'YXZ')
     this.group.visible = false
     this.group.traverse((o) => (o.frustumCulled = false))
-    camera.add(this.group)
+    parent.add(this.group)
     this.ortho.up.set(0, 0, -1)
   }
 

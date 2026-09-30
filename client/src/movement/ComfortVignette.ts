@@ -41,11 +41,16 @@ export class ComfortVignette {
           // Angle from straight ahead; the sphere is parented to the camera so -Z is the view direction.
           float angle = acos(clamp(-normalize(vDir).z, -1.0, 1.0));
           float edge = smoothstep(uInner, uInner + 0.3, angle);
-          // Dive mask: a soft dark rim at the edge of view, wider at the sides than top and bottom.
+          // Dive goggles: two round lenses side by side with a nose bridge between them at the bottom;
+          // the frame darkens everything outside the lenses. (Kept wide, so the view stays open.)
           vec3 d = normalize(vDir);
-          float oval = length(vec2(d.x * 0.85, d.y * 1.25)) / max(-d.z, 0.05);
-          // Kept thin, out in the corners, so it frames the view without closing it in.
-          float mask = smoothstep(1.55, 1.95, oval) * 0.8 * uMask;
+          vec2 t = d.xy / max(-d.z, 0.05);
+          vec2 l = (t - vec2(-0.4, 0.06)) / vec2(0.78, 0.8);
+          vec2 r = (t - vec2(0.4, 0.06)) / vec2(0.78, 0.8);
+          float lens = min(length(l), length(r));
+          float nose = (1.0 - smoothstep(0.14, 0.22, abs(t.x))) * smoothstep(-0.4, -0.55, t.y) * 0.8;
+          float frame = -d.z < 0.05 ? 1.0 : max(smoothstep(0.96, 1.06, lens), nose);
+          float mask = frame * 0.88 * uMask;
           float dark = max(max(edge, uFade), mask);
           // Drunk haze: amber, heavier at the edges, slowly breathing, with soft blotches swirling
           // round the edge of view (colour only: the view itself never moves).

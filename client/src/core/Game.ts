@@ -112,7 +112,12 @@ export class Game implements GameContext {
     this.fps = new FpsOverlay(this.renderer, this.controllers.leftGrip, settings.showFps)
     this.wrist = new WristComputer(this.controllers.leftGrip)
     this.goggles = new GogglesDisplay(this.camera)
-    this.miniMap = new MiniMap(this.camera)
+    // On the same glass as the air gauge, so it shakes with it when air runs low.
+    this.miniMap = new MiniMap(this.goggles.glass)
+    this.goggles.onShake = () => {
+      for (const h of this.hands) h.pulse(0.7, 250)
+      this.audio.play('whistle', undefined, 0.35)
+    }
     this.audio = new AudioSystem(this.camera, this.scene, this.controllers.hands)
     this.menu = new GameMenu(this.scene, this.audio, () => this.menuItems())
     this.audio.setAmbience(settings.ambience)

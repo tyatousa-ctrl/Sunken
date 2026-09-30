@@ -6,9 +6,26 @@ export interface GogglesStatus {
   refilling: boolean
 }
 
-// A little heads-up readout printed inside the dive mask's glass, in the top-left corner of view:
-// the air gauge and depth (the mini map sits in the top right). It only shows while the mask is on.
+/** Below this much air the goggles shake and tell you to surface. */
+const LOW_AIR = 0.2
+const SHAKE_EVERY = 3
+const SHAKE_SECONDS = 0.6
+
+// A little heads-up readout printed inside the dive goggles' glass, in the top-left of view: the air
+// gauge and depth (the mini map sits in the top right, on the same glass). It only shows while the
+// mask is on. Below 20% air the glass shakes every 3 seconds with a buzz in both hands, and a red
+// "GO TO THE SURFACE!" shows, until you breathe again (or it runs out).
 export class GogglesDisplay {
+  /** The glass the readouts are printed on (the mini map hangs here too); it's what shakes. */
+  readonly glass = new THREE.Group()
+  private readonly warnCanvas = document.createElement('canvas')
+  private readonly warnTexture: THREE.CanvasTexture
+  private readonly warning: THREE.Mesh
+  private shakeClock = 0
+  private shaking = 0
+  private warned = false
+  /** Called at each shake (the game buzzes both hands). */
+  onShake: () => void = () => {}
   private readonly canvas = document.createElement('canvas')
   private readonly ctx: CanvasRenderingContext2D
   private readonly texture: THREE.CanvasTexture
@@ -33,13 +50,75 @@ export class GogglesDisplay {
     this.panel.frustumCulled = false
     this.panel.visible = false
     ;(this.panel.material as THREE.MeshBasicMaterial).opacity = 0.95
-    camera.add(this.panel)
+    this.glass.add(this.panel)
+    camera.add(this.glass)
+
+    // The low-air warning: top centre of the glass, red.
+    this.warnCanvas.width = 512
+    this.warnCanvas.height = 96
+    this.warnTexture = new THREE.CanvasTexture(this.warnCanvas)
+    this.warnTexture.colorSpace = THREE.SRGBColorSpace
+    const ctx = this.warnCanvas.getContext('2d')!
+    ctx.fillStyle = 'rgba(60, 4, 4, 0.7)'
+    roundRect(ctx, 4, 4, 504, 88, 20)
+    ctx.fill()
+    ctx.strokeStyle = '#ff4d4d'
+    ctx.lineWidth = 5
+    ctx.stroke()
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 44px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('GO TO THE SURFACE!', 256, 50, 470)
+    this.warnTexture.needsUpdate = true
+    this.warning = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.1, 0.019),
+      new THREE.MeshBasicMaterial({ map: this.warnTexture, transparent: true, depthTest: false, depthWrite: false, fog: false, toneMapped: false }),
+    )
+    this.warning.position.set(0, 0.052, -0.26)
+    this.warning.rotation.x = -0.18
+    this.warning.renderOrder = 1003
+    this.warning.frustumCulled = false
+    this.warning.visible = false
+    this.glass.add(this.warning)
+  }
+
+  /** Low on air, the warning flashing and the glass shaking every few seconds. */
+  private lowAir(dt: number, status: GogglesStatus): void {
+    const low = status.air < LOW_AIR && status.air > 0 && !status.refilling && status.depth > 0.3
+    this.warning.visible = low && Math.floor(this.blink * 2.5) % 3 !== 2
+    if (!low) {
+      this.shakeClock = 0
+      this.shaking = 0
+      this.warned = false
+      this.glass.position.set(0, 0, 0)
+      this.glass.rotation.set(0, 0, 0)
+      return
+    }
+    this.shakeClock -= dt
+    if (this.shakeClock <= 0) {
+      this.shakeClock = SHAKE_EVERY
+      this.shaking = SHAKE_SECONDS
+      this.onShake()
+      this.warned = true
+    }
+    this.shaking = Math.max(0, this.shaking - dt)
+    const k = this.shaking / SHAKE_SECONDS
+    const t = this.blink * 60
+    this.glass.position.set(Math.sin(t * 1.3) * 0.004 * k, Math.sin(t * 1.7) * 0.003 * k, 0)
+    this.glass.rotation.z = Math.sin(t) * 0.03 * k
+  }
+
+  /** Whether the warning has started (for tests and the HUD). */
+  get warningOn(): boolean {
+    return this.warned
   }
 
   update(dt: number, visible: boolean, status: GogglesStatus): void {
     this.panel.visible = visible
-    if (!visible) return
     this.blink += dt
+    this.lowAir(dt, visible ? status : { ...status, air: 1 })
+    if (!visible) return
     this.sinceDraw += dt
     if (this.sinceDraw < 0.1) return
     this.sinceDraw = 0
