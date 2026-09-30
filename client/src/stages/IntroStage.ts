@@ -34,6 +34,7 @@ import { TitanicBow } from '../intro/TitanicBow'
 import { RAT_GAME_AT, WhackARat } from '../intro/WhackARat'
 import { FIRE_AT, RatRoast, SKEWERS_AT } from '../intro/RatRoast'
 import { CART_AT, CannoliCart } from '../intro/CannoliCart'
+import { DICE_AT, LiarsDice, TABLE_RADIUS } from '../intro/LiarsDice'
 import { Level1Stage } from './Level1Stage'
 import { deckHalfWidth, DECK_BOW_Z, FOREMAST_Z, STRETCH } from '../intro/deck'
 
@@ -66,6 +67,8 @@ const OBSTACLES: Obstacle[] = [
   { x: 0, z: FOREMAST_Z, r: 0.45 },
   { x: TABLE_POSITION.x, z: TABLE_POSITION.z, r: 0.75 },
   ...gearObstacles(),
+  // Liar's Dice: the barrel table (the stools you can walk up to).
+  { x: DICE_AT.x, z: DICE_AT.z, r: TABLE_RADIUS },
   // The cannoli cart.
   ...[-0.45, 0, 0.45].map((dz) => ({ x: CART_AT.x, z: CART_AT.z + dz, r: 0.5 })),
   // The rat roast's fire barrel and bucket of skewers.
@@ -130,6 +133,8 @@ export class IntroStage implements Stage {
   private roast!: RatRoast
   /** The cannoli cart, forward of the main mast. */
   private cannoli!: CannoliCart
+  /** Liar's Dice round a barrel table, amidships. */
+  private dice!: LiarsDice
   /** The bow: bowsprit, and Rose to fly with. */
   private bow!: TitanicBow
   private swivelKey!: LooseItem
@@ -285,6 +290,19 @@ export class IntroStage implements Stage {
       setBurn: (amount) => (game.vignette.burn = amount),
     })
     this.cannoli = new CannoliCart(this.ship, this.grab, { audio: game.audio, cream: this.debris, camera: game.camera, say: (text, seconds) => game.hud.now(text, seconds) })
+    this.dice = new LiarsDice(this.ship, {
+      audio: game.audio,
+      confetti: this.fire,
+      camera: game.camera,
+      say: (text, seconds) => game.hud.now(text, seconds),
+      isHost: () => game.isHost(),
+      mySlot: () => game.net?.roster().find((p) => p.sessionId === game.net?.sessionId)?.slot ?? 0,
+      nameOf: (slot) => {
+        const net = game.net
+        if (!net) return slot === 0 ? game.settings.name || 'Captain' : null
+        return net.roster().find((p) => p.slot === slot && p.connected)?.name ?? null
+      },
+    })
     this.rats.onRoundStart = (round) => this.roast.roundStarted(round)
     this.rats.onRoundEnd = (score, round) => {
       this.roast.roundEnded(score, round)
@@ -378,6 +396,7 @@ export class IntroStage implements Stage {
     this.rats.update(dt, game.hands, game.camera)
     this.roast.update(dt)
     this.cannoli.update(dt)
+    this.dice.update(dt, game.camera)
     if (this.phase !== 'overboard') this.bow.update(dt, game.camera.getWorldPosition(this.v), game.hands, game.camera, () => this.kingOfTheWorld(null))
     this.swords.face(game.camera)
     for (const z of this.ziplines) z.face(game.camera)
@@ -528,6 +547,12 @@ export class IntroStage implements Stage {
     this.rats.onHit = (i, startAt) => net.send('prop', { key: 'intro/ratHit', v: [i, startAt] })
     // Cannoli: filled, dipped, left on the plate, eaten: the same for everyone.
     this.cannoli.onChange = (i, state) => net.send('prop', { key: `intro/cannoli${i}`, v: state })
+    // Liar's Dice: moves go to the host, who runs the game and tells everyone the table.
+    this.dice.onAct = (v) => net.send('prop', { key: 'intro/diceAct', v })
+    this.dice.onState = (table, seats) => {
+      net.send('prop', { key: 'intro/diceTable', v: table })
+      net.send('prop', { key: 'intro/diceSeats', v: seats })
+    }
     // The roast: rats onto skewers, skewers (what's on them, how cooked), the spit.
     this.roast.onRatTaken = (i, round) => net.send('prop', { key: `intro/roast/rat${i}`, v: [round] })
     this.roast.onSkewer = (i, state) => net.send('prop', { key: `intro/roast/sk${i}`, v: state })
@@ -542,6 +567,9 @@ export class IntroStage implements Stage {
       if (sw) sw.show(msg.v[0] === 1 ? 1 : 0)
       const cannolo = /^intro\/cannoli(\d)$/.exec(msg.key)
       if (cannolo) this.cannoli.remote(Number(cannolo[1]), msg.v)
+      if (msg.key === 'intro/diceAct') this.dice.remoteAct(msg.v, msg.by ?? '')
+      if (msg.key === 'intro/diceSeats') this.dice.remoteSeats(msg.v)
+      if (msg.key === 'intro/diceTable') this.dice.remoteTable(msg.v)
       const roast = /^intro\/roast\/(rat|sk)(\d)$/.exec(msg.key)
       if (roast?.[1] === 'rat') this.roast.ratTakenRemote(Number(roast[2]), msg.v[0])
       if (roast?.[1] === 'sk') this.roast.skewerRemote(Number(roast[2]), msg.v)

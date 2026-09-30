@@ -413,6 +413,14 @@ Fixed:
 - **The bubble.** Folded away, new messages don't pop up: the "i" throbs for a moment instead; open it to read.
 - **Menu.** "Instructions: On/Off" (was "Notes & signs") turns every instruction off at once, and "Reopen closed instructions" brings back every one you closed. The start screen has the same on/off option.
 
+## Liar's Dice amidships (2-4 players)
+
+- **The table.** A barrel table with green baize on the centreline between the cannons, four stools round it (each with a coloured band: red, blue, green, gold), a leather cup and five bone dice at each place, and a four-sided board on a pole over the middle showing the bid, whose turn it is and everyone's dice left.
+- **Sit and start.** Point at "Sit here" on a chair's panel and pull the trigger. Sat down, your panel has Start, Sailors (send them off, when two or more of you want the table to yourselves) and Leave. Fewer than three of you: sailors (One-Eyed Pete, Salty Sal, Barnacle Bill, Mad Maggie) take the empty stools and play.
+- **Play.** Everyone's dice are rolled under their cup; your cup tips back for you alone, so you see your dice and nobody else's. In turn round the table, bid how many dice on the whole table show a face: on your turn pick a face, set how many with − and +, and press BID (it has to beat the last bid: more dice, or as many of a higher face), or press LIAR! to call the last bid. Every cup comes up and the dice that count stand out: if there are at least that many, the caller loses a die; if not, the bidder does. Lose all five and you're out; the last with dice wins (confetti). Then the table's free for the next game.
+- **In a crew.** The host's device runs the game (dice, turns, sailors) and tells everyone; moves from anyone else go to the host. A crewmate who leaves mid-game, or disconnects, has a sailor take their dice; someone who dawdles for a minute has a sailor play that turn for them.
+- **Replaced tug-of-war**, which is gone.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.
