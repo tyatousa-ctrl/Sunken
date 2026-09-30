@@ -314,6 +314,7 @@ export class IntroStage implements Stage {
     const { game } = this
     this.phase = 'attack'
     this.gear.unlock()
+    this.cannons.swivel.fired()
     game.record.whoShotFirst = shooter
     game.audio.silence(1.2)
     game.hud.clear()

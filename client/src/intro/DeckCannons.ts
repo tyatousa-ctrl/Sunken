@@ -152,6 +152,7 @@ export class DeckCannons {
     const out = new THREE.Vector3(gun.side, 0, 0).applyQuaternion(quat)
     // The swivel gun lobs its ball straight onto its target.
     const lob = gun.swivel ? lobVelocity(muzzle, this.ctx.swivelTarget()) : null
+    gun.swivel?.fired()
     if (lob) out.copy(lob).normalize()
     this.ctx.audio.play('cannon', muzzle)
     this.ctx.fire.emit({ position: muzzle, velocity: out.clone().multiplyScalar(6), spread: 1.5, color: 0xffc56b, size: 0.9, endSize: 0.2, life: 0.15, count: 6 })
@@ -289,6 +290,11 @@ export class SwivelGun {
     this.locked = false
     if (now) this.padlock.visible = false
     else this.dropT = 0
+  }
+
+  /** Fired: the warning is moot now, so take it down (it would hide the enemy). */
+  fired(): void {
+    this.sign.mesh.visible = false
   }
 
   /** A flame held to the locked touch hole. */

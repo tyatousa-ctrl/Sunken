@@ -326,6 +326,22 @@ From the first Quest playtest on Render:
 - **Blunderbuss ammo.** A small display over the breech shows the shells loaded (●● 2 shells). At zero it says "Flick down to open" (or A/X, or R on desktop); open, it says "Flick up to load".
 - **Bodies.** You have your own diver body under the camera (no head, so it never blocks your view), coloured like your crew slot. Every body (yours, the crew's, the bots') is fitted to the ground under it: on deck it stretches from your head to the deck, so it matches your real height and bends when you crouch. Swimming, it leans forward, and near the seabed it lies flat, so legs never go into the ground. Your eyes now stay 0.5 m above the seabed (was 0.35 m), the height of a diver lying flat with a tank on.
 
+## Full check of every level (walkthrough)
+
+Every stage was played through end to end in the headless Quest emulator, including every hand-off: deck → (attack, gear up, over the side) → Level 1 → Level 2 → Level 3 → Level 4 → Vault. Typecheck, the 83 unit tests, the build and the crew server checks pass, and no stage raised a page error.
+
+- **Deck.** Gear lock, sword clashes and blood, mask HUD, hot sauce, clays (lever and AUTO), level-hop panel, fore net, rope between the nests, Polly zipline, the swivel key under the stairs, and the swivel starting the attack. The enemy turns broadside and fires back.
+- **Level 1.** Map, coins, backpack, cabin, figurehead, key, chest (lid opens, hoard inside), map piece, gate.
+- **Level 2.** Dials (gold when right) set to 2 C ! open the door; starfish flip; turtle NOS; map piece and gate.
+- **Level 3.** Tunnel, climb out, all three shells lock and carry the beam, carving, map piece, boulder, gate. A late crew joiner sees the shells where the crew left them.
+- **Level 4.** Nameless wreck, rotten lantern vs the right one, map piece, moray, gate.
+- **Vault.** Keeper, oyster pearl, feeding the keeper, opening the chest together.
+
+Fixed along the way:
+
+- **Swivel gun sign.** The "DON'T LIGHT THIS!" sign now comes down once the gun has been fired; it was left hanging over the gun during the battle, in front of the enemy ship. Crewmates who join after the shot don't see it either.
+- **Page icon.** An anchor icon, so browsers stop asking the server for a missing `favicon.ico`.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.
