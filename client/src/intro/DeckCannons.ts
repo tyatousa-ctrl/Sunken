@@ -185,9 +185,10 @@ export class DeckCannons {
       const hit = ball.mine ? this.ctx.hitTest(from, to, ball.landIn !== undefined) : null
       let done = ball.age > BALL_LIFE
       if (hit) {
-        // A hit: a few splinters and a thump (she's built to take it, and she'll answer).
-        this.ctx.debris.emit({ position: hit, velocity: new THREE.Vector3(0, 1.5, 0), spread: 1.5, color: 0x5b3a21, size: 0.12, life: 1.4, count: 8 })
+        // A hit: it glances off her oak with a dull thud and drops into the sea alongside. She takes no
+        // damage at all: no splinters, no fire, no marks.
         this.ctx.audio.play('thud', hit, 0.8)
+        this.ctx.splash.emit({ position: hit.clone().setY(0.1), velocity: new THREE.Vector3(0, 5, 0), spread: 1.5, color: 0xeaf6ff, size: 0.3, life: 1.2, count: 18 })
         done = true
       } else if (to.y < 0) {
         this.ctx.splash.emit({ position: to.clone().setY(0.1), velocity: new THREE.Vector3(0, 7, 0), spread: 2.5, color: 0xeaf6ff, size: 0.35, life: 1.6, count: 30 })

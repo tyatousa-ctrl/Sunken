@@ -37,6 +37,8 @@ import { deckHalfWidth, DECK_BOW_Z, FOREMAST_Z, STRETCH } from '../intro/deck'
 /** The "harmless merchant" anchored in the bay, ~150 m off the starboard bow. */
 const ENEMY_POSITION = new THREE.Vector3(110, 0, -100)
 const RAIL_MARGIN = 0.35
+/** How far off the other ship lies once the fight starts (m). */
+const ENEMY_BATTLE_RANGE = 50
 const PULL_COOLDOWN = 2.5
 /** AUTO clays: seconds between launches once the sky is clear. */
 const AUTO_GAP = 2.5
@@ -85,7 +87,7 @@ export class IntroStage implements Stage {
   readonly id = 'intro'
   readonly root = new THREE.Group()
   private readonly ship = new Galleon({ flag: 'crew', stretch: STRETCH })
-  private readonly enemy = new Galleon({ hullColor: 0x2e2620, sailColor: 0xcfc6b2, flag: 'merchant' })
+  private readonly enemy = new Galleon({ hullColor: 0x2e2620, sailColor: 0xcfc6b2, flag: 'merchant', stretch: STRETCH })
   private readonly smoke = new Particles({ max: 500, gravity: 0.3, drag: 0.6 })
   private readonly fire = new Particles({ max: 400, gravity: 1.5, drag: 1, blending: THREE.AdditiveBlending })
   private readonly debris = new Particles({ max: 400, gravity: -9.8, drag: 0.3 })
@@ -155,6 +157,10 @@ export class IntroStage implements Stage {
     const toUs = ENEMY_POSITION.clone().negate().setY(0).normalize()
     // Broadside = the enemy's port side (local -x) facing us.
     this.broadsideYaw = Math.atan2(toUs.z, -toUs.x)
+    // Her yards braced round to the wind, so her sails show from the side (square sails edge-on
+    // look like bare masts from broadside).
+    this.enemy.mainmast.rotation.y = 0.75
+    this.enemy.foremast.rotation.y = 0.75
     this.enemy.mergeAll()
     this.enemy.group.scale.setScalar(0.85)
     this.enemy.group.position.copy(ENEMY_POSITION)
@@ -369,6 +375,10 @@ export class IntroStage implements Stage {
     // Heave to: the ship slows to a stop, and the other ship is no longer part of the moving scenery.
     this.sailing.underway = false
     this.root.attach(this.enemy.group)
+    // Attaching re-expresses her rotation, and it can come out as a half turn about x and z (the same
+    // pose) — which the battle's turn (it only sets y) would leave upside down. Keep her upright.
+    const bow = new THREE.Vector3(0, 0, -1).applyQuaternion(this.enemy.group.quaternion)
+    this.enemy.group.rotation.set(0, Math.atan2(-bow.x, -bow.z), 0)
     this.aimEnemyAtUs()
     // Anyone up the rigging is back on deck: the mast is about to take hits.
     const sliding = this.ziplines.some((z) => z.riding)
@@ -752,14 +762,14 @@ export class IntroStage implements Stage {
 
   /** The attack begins: turn the other ship (wherever the voyage left her) into a sensible range. */
   private aimEnemyAtUs(): void {
+    // Close enough to see her in full: broadside on, 75 m off, guns blazing (from wherever she was).
     const at = this.enemy.group.position
     const flat = new THREE.Vector3(at.x, 0, at.z)
-    const distance = flat.length()
-    if (distance > 260 || distance < 80) {
-      flat.setLength(160)
-      at.x = flat.x
-      at.z = flat.z
-    }
+    if (flat.lengthSq() < 1) flat.set(1, 0, -1)
+    flat.setLength(ENEMY_BATTLE_RANGE)
+    at.x = flat.x
+    at.z = flat.z
+    this.enemy.group.scale.setScalar(1)
     const toUs = flat.clone().negate().normalize()
     this.broadsideYaw = Math.atan2(toUs.z, -toUs.x)
   }
