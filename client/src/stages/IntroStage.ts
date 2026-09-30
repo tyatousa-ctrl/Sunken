@@ -33,6 +33,7 @@ import { DECK_ROUTE, POLLY_ROUTE, Zipline, type ZiplineRoute } from '../intro/Zi
 import { TitanicBow } from '../intro/TitanicBow'
 import { RAT_GAME_AT, WhackARat } from '../intro/WhackARat'
 import { FIRE_AT, RatRoast, SKEWERS_AT } from '../intro/RatRoast'
+import { CART_AT, CannoliCart } from '../intro/CannoliCart'
 import { Level1Stage } from './Level1Stage'
 import { deckHalfWidth, DECK_BOW_Z, FOREMAST_Z, STRETCH } from '../intro/deck'
 
@@ -65,6 +66,8 @@ const OBSTACLES: Obstacle[] = [
   { x: 0, z: FOREMAST_Z, r: 0.45 },
   { x: TABLE_POSITION.x, z: TABLE_POSITION.z, r: 0.75 },
   ...gearObstacles(),
+  // The cannoli cart.
+  ...[-0.45, 0, 0.45].map((dz) => ({ x: CART_AT.x, z: CART_AT.z + dz, r: 0.5 })),
   // The rat roast's fire barrel and bucket of skewers.
   { x: FIRE_AT.x, z: FIRE_AT.z, r: 0.45 },
   { x: SKEWERS_AT.x, z: SKEWERS_AT.z, r: 0.2 },
@@ -125,6 +128,8 @@ export class IntroStage implements Stage {
   /** Whack-a-Rat, amidships, and roasting your catch over the fire barrel beside it. */
   private rats!: WhackARat
   private roast!: RatRoast
+  /** The cannoli cart, forward of the main mast. */
+  private cannoli!: CannoliCart
   /** The bow: bowsprit, and Rose to fly with. */
   private bow!: TitanicBow
   private swivelKey!: LooseItem
@@ -276,9 +281,16 @@ export class IntroStage implements Stage {
       now: () => game.net?.serverNow() ?? performance.now(),
       camera: game.camera,
       say: (text, seconds) => game.hud.now(text, seconds),
+      hands: () => game.hands,
+      setBurn: (amount) => (game.vignette.burn = amount),
     })
+    this.cannoli = new CannoliCart(this.ship, this.grab, { audio: game.audio, cream: this.debris, camera: game.camera, say: (text, seconds) => game.hud.now(text, seconds) })
     this.rats.onRoundStart = (round) => this.roast.roundStarted(round)
-    this.rats.onRoundEnd = (score, round) => this.roast.roundEnded(score, round)
+    this.rats.onRoundEnd = (score, round) => {
+      this.roast.roundEnded(score, round)
+      // The only hint of what the fire's for.
+      if (score > 0) game.hud.now(`${score} rat${score === 1 ? '' : 's'}! Hit the red button to play again... or grab one of those rats.`, 6)
+    }
     this.gear.onLocked = (hand) => {
       hand.pulse(0.2, 40)
       game.hud.now('The scuba gear is chained up. No need for it on a fine day like this… yet.', 3)
@@ -365,6 +377,7 @@ export class IntroStage implements Stage {
     this.swords.update(dt, game.halfHeight)
     this.rats.update(dt, game.hands, game.camera)
     this.roast.update(dt)
+    this.cannoli.update(dt)
     if (this.phase !== 'overboard') this.bow.update(dt, game.camera.getWorldPosition(this.v), game.hands, game.camera, () => this.kingOfTheWorld(null))
     this.swords.face(game.camera)
     for (const z of this.ziplines) z.face(game.camera)
@@ -379,6 +392,7 @@ export class IntroStage implements Stage {
     for (const off of this.unsubscribe) off()
     this.game.hud.clear()
     this.game.vignette.drunk = 0
+    this.game.vignette.burn = 0
     this.game.vignette.blackout = 0
     this.game.player.frozen = false
     this.game.player.setDrunk(0, 1)
@@ -512,6 +526,8 @@ export class IntroStage implements Stage {
     // Whack-a-Rat: one round, one score, for the whole crew.
     this.rats.onStart = (seed, startAt) => net.send('prop', { key: 'intro/rats', v: [seed, startAt] })
     this.rats.onHit = (i, startAt) => net.send('prop', { key: 'intro/ratHit', v: [i, startAt] })
+    // Cannoli: filled, dipped, left on the plate, eaten: the same for everyone.
+    this.cannoli.onChange = (i, state) => net.send('prop', { key: `intro/cannoli${i}`, v: state })
     // The roast: rats onto skewers, skewers (what's on them, how cooked), the spit.
     this.roast.onRatTaken = (i, round) => net.send('prop', { key: `intro/roast/rat${i}`, v: [round] })
     this.roast.onSkewer = (i, state) => net.send('prop', { key: `intro/roast/sk${i}`, v: state })
@@ -524,6 +540,8 @@ export class IntroStage implements Stage {
     on<{ key: string; v: number[]; by?: string }>('prop', (msg) => {
       const sw = switches[msg.key as keyof typeof switches]
       if (sw) sw.show(msg.v[0] === 1 ? 1 : 0)
+      const cannolo = /^intro\/cannoli(\d)$/.exec(msg.key)
+      if (cannolo) this.cannoli.remote(Number(cannolo[1]), msg.v)
       const roast = /^intro\/roast\/(rat|sk)(\d)$/.exec(msg.key)
       if (roast?.[1] === 'rat') this.roast.ratTakenRemote(Number(roast[2]), msg.v[0])
       if (roast?.[1] === 'sk') this.roast.skewerRemote(Number(roast[2]), msg.v)

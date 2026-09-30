@@ -393,9 +393,14 @@ Fixed:
 - **Classes on name tags.** Every name tag (players and bots) shows the class under the name.
 - **Whack-a-Rat (amidships).** A wooden box with six holes and four belaying pins on its side, between the sword rack and the foremast. Grab a pin, slap the big red button, and after a 3-2-1 rats pop up for 30 seconds, faster as it goes: bonk them (a squeak, stars, a thump in your hand). The board shows the rats, the time left, and the best score of the voyage. In a crew everyone sees the same rats at the same moments, anyone can bonk them, and the crew shares the score.
 
-## Rat roast
+## Rat roast (a surprise: nothing on deck says what the fire is for)
 
 - **After Whack-a-Rat, roast your catch.** When a round ends, up to three of the rats you bonked lie knocked out on the box lid (X eyes, legs in the air); take one and another squeaks into its place a couple of seconds later. Beside the box there's a barrel fire (glowing coals, dancing flames, sparks) with an iron fork each side for a spit, and a bucket of skewers. Hold a skewer, touch a rat to its tip and it's on. Lay the skewer across the forks: it turns by itself over the flames, sizzling and smoking, and the rat goes from grey to golden brown in 10 seconds ("Ding!"). Take it off and hold it to your mouth: three crunchy bites, "Tastes like chicken." Raw rat is refused; left on 15 seconds too long, it's charcoal. In a crew everyone sees the catch, the skewers (and what's on them, in hand too) and the spit cooking in step.
+
+## The fire, and the cannoli cart
+
+- **Just a fire.** The barrel by Whack-a-Rat has no sign: it's a fire. Hold your hands over it and they're warmed (a soft hum in the controllers). Keep them there 7 seconds straight and they burn: your view flushes red and both hands buzz hard until you pull them away. The roast is found by accident; the only hint is at the end of a round with rats bonked: "Hit the red button to play again... or grab one of those rats."
+- **Cannoli cart.** To port, just forward of the main mast: a wooden cart with big wheels, a green-white-red striped canopy and CANNOLI painted along it. On the counter: a tray of six ridged, golden shells, a piping bag standing in a cup, jars of crushed pistachios and chocolate chips, and a plate. Hold a shell in one hand and the bag in the other; squeeze the trigger with the nozzle at an end of the shell and cream pipes in, showing at both ends as it fills. Dip a creamy end in a jar to coat it. Hold it to your mouth to eat it (three crunchy bites, and a word on the flavour), or leave it on the plate (room for three) for someone else to come and eat. An eaten one is back on the tray, fresh, 5 seconds later. In a crew everyone sees the same shells: filling, toppings, what's on the plate, and what's been eaten.
 
 ## Decisions
 

@@ -15,7 +15,9 @@ export class ComfortVignette {
   blackout = 0
   /** Warm drunken haze, 0–1 (never moves the camera: colour only). */
   drunk = 0
-  private readonly uniforms = { uInner: { value: 2 }, uFade: { value: 0 }, uMask: { value: 0 }, uDrunk: { value: 0 }, uTime: { value: 0 } }
+  /** Hands held in a fire too long: the view flushes red (0–1). */
+  burn = 0
+  private readonly uniforms = { uInner: { value: 2 }, uFade: { value: 0 }, uMask: { value: 0 }, uDrunk: { value: 0 }, uBurn: { value: 0 }, uTime: { value: 0 } }
   private amount = 0
 
   constructor(
@@ -35,6 +37,7 @@ export class ComfortVignette {
         uniform float uFade;
         uniform float uMask;
         uniform float uDrunk;
+        uniform float uBurn;
         uniform float uTime;
         varying vec3 vDir;
         void main() {
@@ -59,6 +62,10 @@ export class ComfortVignette {
           float haze = uDrunk * (0.4 + 0.6 * smoothstep(0.1, 0.9, angle)) * (0.8 + 0.2 * sin(uTime * 1.3)) * swirl;
           float alpha = 1.0 - (1.0 - dark) * (1.0 - haze);
           vec3 color = mix(vec3(0.72, 0.36, 0.12), vec3(0.0, 0.02, 0.04), dark / max(dark + haze, 1e-3));
+          // Burning hands: red washing in from the edges, pulsing.
+          float burn = uBurn * (0.3 + 0.55 * smoothstep(0.1, 1.1, angle)) * (0.85 + 0.15 * sin(uTime * 9.0));
+          color = mix(color, vec3(0.85, 0.04, 0.02), burn / max(alpha + burn, 1e-3));
+          alpha = 1.0 - (1.0 - alpha) * (1.0 - burn);
           gl_FragColor = vec4(color, alpha);
         }`,
       transparent: true,
@@ -96,6 +103,7 @@ export class ComfortVignette {
     this.uniforms.uInner.value = THREE.MathUtils.lerp(1.5, 0.45, this.amount)
     this.uniforms.uFade.value = Math.max(this.fade, this.transition, this.blackout)
     this.uniforms.uDrunk.value = this.drunk
+    this.uniforms.uBurn.value = this.burn
     this.uniforms.uTime.value += dt
   }
 }

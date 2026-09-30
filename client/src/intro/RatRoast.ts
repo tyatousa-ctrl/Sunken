@@ -4,7 +4,6 @@ import type { Particles } from '../fx/Particles'
 import type { Hand } from '../input/Hand'
 import type { GrabSystem, Interactable } from '../interaction/GrabSystem'
 import type { HeldAdapter, HeldSyncable } from '../net/HeldSync'
-import { Label } from '../ui/Label'
 import { DECK_Y, type Galleon } from '../world/ship/Galleon'
 import { RAT_GAME_AT } from './WhackARat'
 
@@ -35,7 +34,14 @@ export interface RoastContext {
   now: () => number
   camera: THREE.Camera
   say: (text: string, seconds: number) => void
+  /** Your hands (to warm at the fire). */
+  hands: () => Hand[]
+  /** How red your view is from burning hands (0–1). */
+  setBurn: (amount: number) => void
 }
+
+/** Hands this long over the flames without a break and they start to burn. */
+export const BURN_SECONDS = 7
 
 /** A skewer's story: empty, raw rat on it, cooking on the spit, and how many bites are gone. */
 export type SkewerPhase = 'empty' | 'raw' | 'spit' | 'held'
@@ -58,7 +64,9 @@ export class RatRoast {
   private readonly root = new THREE.Group()
   private readonly flames: THREE.Sprite[] = []
   private readonly embers: THREE.Mesh
-  private readonly sign = new Label({ width: 0.55, canvasWidth: 560, canvasHeight: 230, billboard: true })
+  /** Seconds your hands have been in the fire without a break. */
+  private heat = 0
+  private warmTimer = 0
   /** The skewer on the spit (or null), and since when it's been cooking (ms, shared clock). */
   private onSpitNow: Skewer | null = null
   private spitSince = 0
@@ -146,18 +154,40 @@ export class RatRoast {
       this.catches.push(grab.add(c))
     }
 
-    this.sign.mesh.position.copy(FIRE_AT).add(new THREE.Vector3(0, 1.75, 0))
-    this.root.add(this.sign.mesh)
-    this.sign.set([
-      { text: 'Rat Roast', size: 44, bold: true, color: '#f2b64a' },
-      { text: 'Hold a skewer, touch a bonked rat to its tip', size: 24 },
-      { text: 'Lay it on the forks over the fire: 10 s to golden', size: 24 },
-      { text: 'Then hold it to your mouth and eat up!', size: 24, color: '#ffe0a0' },
-    ])
   }
 
   get audio(): AudioSystem {
     return this.ctx.audio
+  }
+
+  /**
+   * Warming your hands: held over the barrel, a gentle warm buzz. Keep them there 7 seconds straight
+   * and they burn: the view flushes red and both hands shake. Take them away and it fades.
+   */
+  private warmHands(dt: number): void {
+    const coals = this.root.localToWorld(this.v.copy(FIRE_AT).setY(DECK_Y + BARREL.h - 0.1))
+    const inFire = this.ctx.hands().filter((h) => {
+      if (!h.connected || h.virtual) return false
+      const p = h.worldPos(new THREE.Vector3())
+      const up = p.y - coals.y
+      return Math.hypot(p.x - coals.x, p.z - coals.z) < BARREL.r + 0.12 && up > 0 && up < 0.7
+    })
+    if (inFire.length === 0) {
+      this.heat = 0
+      this.warmTimer = 0
+      this.ctx.setBurn(0)
+      return
+    }
+    this.heat += dt
+    this.warmTimer -= dt
+    const burning = this.heat >= BURN_SECONDS
+    if (this.warmTimer <= 0) {
+      // Warm: a slow, soft hum. Burning: fast, hard buzzing.
+      this.warmTimer = burning ? 0.12 : 0.6
+      for (const h of inFire) h.pulse(burning ? 1 : 0.15, burning ? 110 : 250)
+      if (burning && Math.random() < 0.3) this.ctx.audio.play('crack', h0(inFire), 0.3)
+    }
+    this.ctx.setBurn(burning ? Math.min(1, 0.55 + (this.heat - BURN_SECONDS) * 0.25) : 0)
   }
 
   /** A round of Whack-a-Rat started: the old catch is cleared away. */
@@ -235,7 +265,7 @@ export class RatRoast {
 
   update(dt: number): void {
     this.time += dt
-    this.sign.face(this.ctx.camera)
+    this.warmHands(dt)
     // Flames dance; the coals breathe.
     for (const f of this.flames) {
       const p = f.userData.phase as number
@@ -608,4 +638,8 @@ function makeFlameTexture(): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(canvas)
   t.colorSpace = THREE.SRGBColorSpace
   return t
+}
+
+function h0(hands: Hand[]): THREE.Vector3 {
+  return hands[0].worldPos(new THREE.Vector3())
 }
