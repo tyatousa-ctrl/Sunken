@@ -407,6 +407,12 @@ Fixed:
 - **The game notices a newer deploy.** Every build writes `version.json` (its commit and build time) next to the page. A running game asks for it every minute and whenever the tab comes back into view; if the server has a different build, the start page reloads itself onto it (once per build, so it can't loop), and in VR a notice says a new version is ready. The Quest browser keeps tabs alive for days, so without this an open tab could run an old build long after a deploy.
 - **The build shows in VR.** The menu's Close tile shows the build (commit and time), as the start screen already did, so you can see which one you're playing.
 
+## OK buttons on floating instructions
+
+- **Point and click OK.** Every floating sign and how-to, and the pop-up bubble that follows your view, has a green OK button. Point a controller at it (it swells) and pull the trigger (or click it with the mouse): the text folds away to a small blue "i" off its lower-left corner, out of the middle of your view. Point at the "i" and pull the trigger to open it again. Closed ones stay closed (remembered on the device by the sign's title), even after a reload. Clicking a button uses up that trigger pull, so it never also fires a gun or strikes a match.
+- **The bubble.** Folded away, new messages don't pop up: the "i" throbs for a moment instead; open it to read.
+- **Menu.** "Instructions: On/Off" (was "Notes & signs") turns every instruction off at once, and "Reopen closed instructions" brings back every one you closed. The start screen has the same on/off option.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.

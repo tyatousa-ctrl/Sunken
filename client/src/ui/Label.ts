@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { clickables, closedNotes, makeButton } from './Clickables'
 
 /** The render layer for floating notes, signs and pop-ups: the menu's "Notes & signs" shows or hides it. */
 export const TEXT_LAYER = 5
@@ -13,6 +14,8 @@ export interface LabelOptions {
   billboard?: boolean
   /** Draw on top of everything (for small labels that sit close to geometry). */
   onTop?: boolean
+  /** Has an OK button that folds it away to a small "i" (default: floating signs, i.e. billboards). */
+  dismissable?: boolean
 }
 
 export interface LabelLine {
@@ -24,10 +27,20 @@ export interface LabelLine {
   bold?: boolean
 }
 
+const OK_W = 0.11
+const OK_H = 0.05
+const INFO = 0.055
+
 // A floating sign: a canvas-textured plane. Text only redraws when it changes, so it's cheap to set
-// every frame. Lines are centred; long lines wrap.
+// every frame. Lines are centred; long lines wrap. Floating signs have an OK button: point at it and
+// pull the trigger (or click it) and the sign folds away to a small "i" at its lower-left corner, out of
+// the way; click the "i" to open it again. Closed signs stay closed (remembered by their title).
 export class Label {
   readonly mesh: THREE.Mesh
+  private ok: THREE.Mesh | null = null
+  private info: THREE.Mesh | null = null
+  private id = ''
+  private collapsed = false
   private readonly canvas = document.createElement('canvas')
   private readonly texture: THREE.CanvasTexture
   private key = ''
@@ -48,6 +61,37 @@ export class Label {
     this.mesh.renderOrder = options.onTop ? 760 : 10
     // All floating words (signs, how-tos, button guides) can be switched off together from the menu.
     this.mesh.layers.set(TEXT_LAYER)
+    if (options.dismissable ?? options.billboard ?? false) this.addButtons(options.width, height)
+  }
+
+  /** OK (folds it away) and "i" (opens it again), both clickable. */
+  private addButtons(width: number, height: number): void {
+    const ok = (this.ok = makeButton('OK', OK_W, OK_H, 'rgba(40, 120, 70, 0.95)', '#ffffff'))
+    const info = (this.info = makeButton('i', INFO, INFO, 'rgba(30, 90, 140, 0.95)', '#ffffff'))
+    ok.position.set(width / 2 - OK_W / 2 - 0.02, -height / 2 + OK_H / 2, 0.003)
+    info.position.set(-width / 2 - INFO / 2, -height / 2, 0.003)
+    for (const b of [ok, info]) {
+      b.layers.set(TEXT_LAYER)
+      b.renderOrder = (this.mesh.renderOrder ?? 10) + 1
+      ;(b.material as THREE.MeshBasicMaterial).depthTest = !this.options.onTop
+      this.mesh.add(b)
+    }
+    info.visible = false
+    clickables.add({ mesh: ok, onClick: () => this.fold(true) })
+    clickables.add({ mesh: info, onClick: () => this.fold(false), reopen: () => this.fold(false, false) })
+  }
+
+  /** Fold away to the "i" (closed) or open again; remembered unless `remember` is false. */
+  private fold(closed: boolean, remember = true): void {
+    if (!this.ok || !this.info) return
+    this.collapsed = closed
+    ;(this.mesh.material as THREE.MeshBasicMaterial).visible = !closed
+    this.ok.visible = !closed
+    this.info.visible = closed
+    if (remember && this.id) {
+      if (closed) closedNotes.close(this.id)
+      else closedNotes.open(this.id)
+    }
   }
 
   set visible(on: boolean) {
@@ -64,6 +108,12 @@ export class Label {
     const key = JSON.stringify(styled)
     if (key === this.key) return
     this.key = key
+    // Its title names it (for staying closed); closed before? Stay folded away.
+    const id = styled[0]?.text ?? ''
+    if (this.ok && id && id !== this.id) {
+      this.id = id
+      this.fold(closedNotes.has(id), false)
+    }
     const ctx = this.canvas.getContext('2d')!
     const W = this.canvas.width
     const H = this.canvas.height
@@ -108,6 +158,13 @@ export class Label {
       y += step
     }
     this.texture.needsUpdate = true
+    // OK just under the box's bottom-right corner, the "i" off its bottom-left.
+    if (this.ok && this.info) {
+      const planeH = (this.options.width * H) / W
+      const bottom = (0.5 - (top + boxH) / H) * planeH
+      this.ok.position.y = bottom - OK_H / 2 - 0.008
+      this.info.position.y = bottom - INFO / 2
+    }
   }
 
   /** Turn (around world up) to face the viewer. Call each frame for billboard labels. */

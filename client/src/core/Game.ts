@@ -15,6 +15,7 @@ import { GameMenu, type MenuItem, type MenuSection } from '../ui/GameMenu'
 import { CLASSES, CLASS_NAMES, type CharacterClass } from '../systems/crew'
 import { saveSettings } from './settings'
 import { TEXT_LAYER } from '../ui/Label'
+import { UiPointer, closedNotes } from '../ui/Clickables'
 import { WristComputer } from '../ui/WristComputer'
 import type { Settings } from './settings'
 import { Inventory } from '../systems/Inventory'
@@ -49,6 +50,8 @@ export class Game implements GameContext {
   readonly menu: GameMenu
   /** Which build this is (shown on the menu, so you can tell a fresh deploy from an old one). */
   buildId = ''
+  /** Point and click on OK / "i" buttons. */
+  private readonly uiPointer: UiPointer
   /** Makes a fresh stage by id ('intro', 'level1' … 'vault', 'sandbox'); set by main. */
   stageFactory: ((id: string) => Stage) | null = null
   /** Where the crew is (the server's word): everyone goes where anyone moves on to. */
@@ -125,6 +128,7 @@ export class Game implements GameContext {
     }
     this.audio = new AudioSystem(this.camera, this.scene, this.controllers.hands)
     this.menu = new GameMenu(this.scene, this.audio, () => this.menuItems())
+    this.uiPointer = new UiPointer(this.renderer.domElement)
     this.audio.setAmbience(settings.ambience)
     this.hud = new Hud(this.scene, this.camera)
     this.setNotes(settings.notes)
@@ -273,9 +277,13 @@ export class Game implements GameContext {
         this.emptyHands()
         this.hud.now('Hands empty.', 2)
       } },
-      { row: 0, key: 'N', label: `Notes & signs: ${this.settings.notes ? 'On' : 'Off'}`, sub: this.settings.notes ? 'Touch to hide all floating words' : 'Touch to show them again', current: !this.settings.notes, action: () => {
+      { row: 0, key: 'N', label: `Instructions: ${this.settings.notes ? 'On' : 'Off'}`, sub: this.settings.notes ? 'Touch to hide every sign and pop-up' : 'Touch to show them again', current: !this.settings.notes, action: () => {
         this.setNotes(!this.settings.notes)
         saveSettings(this.settings)
+      } },
+      { row: 0, key: 'O', label: 'Reopen closed instructions', sub: 'Every one you closed with OK', action: () => {
+        closedNotes.reopenAll()
+        this.hud.now('All instructions open again.', 2)
       } },
     ]
     CLASSES.forEach((cls, i) => {
@@ -360,6 +368,8 @@ export class Game implements GameContext {
       this.desktop.hand.update(dt)
     }
     this.menu.update(dt, this.hands, this.camera)
+    // OK / "i" buttons get first go at the trigger (so clicking one doesn't also fire a gun).
+    this.uiPointer.update(this.hands, this.camera, inXr)
     this.followCrew()
     this.stage?.update(dt, time / 1000)
     this.bots.update(dt, this.stage)

@@ -110,6 +110,16 @@ watchForNewBuild(__BUILD_ID__, (build) => {
 })
 const ambienceSlider = document.getElementById('opt-ambience') as HTMLInputElement
 const hintsToggle = document.getElementById('opt-hints') as HTMLInputElement
+const notesToggle = document.getElementById('opt-notes') as HTMLInputElement
+notesToggle.checked = settings.notes
+notesToggle.addEventListener('change', () => {
+  game.setNotes(notesToggle.checked)
+  saveSettings(settings)
+})
+// Kept in step with the in-game menu's switch.
+setInterval(() => {
+  if (notesToggle.checked !== settings.notes) notesToggle.checked = settings.notes
+}, 1000)
 ambienceSlider.value = String(Math.round(settings.ambience * 100))
 hintsToggle.checked = settings.buttonHints
 ambienceSlider.addEventListener('input', () => {

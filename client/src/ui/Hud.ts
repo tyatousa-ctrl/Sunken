@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { TEXT_LAYER } from './Label'
+import { clickables, closedNotes, makeButton } from './Clickables'
 
 interface Line {
   text: string
@@ -28,6 +29,13 @@ export class Hud {
   private readonly forward = new THREE.Vector3()
   private readonly target = new THREE.Vector3()
   private placed = false
+  /** Folded away with OK: only a small "i" shows (click it to open again). Remembered. */
+  private collapsed = closedNotes.has('hud')
+  private readonly ok: THREE.Mesh
+  private readonly info: THREE.Mesh
+  /** Something new arrived while folded away: the "i" pulses for a moment. */
+  private pulse = 0
+  private contentBottom = 0
 
   constructor(
     scene: THREE.Scene,
@@ -46,8 +54,36 @@ export class Hud {
     this.panel.visible = false
     this.panel.layers.set(TEXT_LAYER)
     scene.add(this.panel)
+    const planeH = (1.1 * H) / W
+    this.ok = makeButton('OK', 0.13, 0.058, 'rgba(40, 120, 70, 0.95)', '#ffffff')
+    this.ok.position.set(0.55 - 0.085, -planeH / 2, 0.003)
+    // The "i" sits off the panel's lower-left corner, out of the middle of your view.
+    this.info = makeButton('i', 0.065, 0.065, 'rgba(30, 90, 140, 0.95)', '#ffffff')
+    this.info.position.set(-0.55 - 0.1, -planeH / 2 - 0.06, 0.003)
+    for (const b of [this.ok, this.info]) {
+      b.layers.set(TEXT_LAYER)
+      b.renderOrder = 901
+      ;(b.material as THREE.MeshBasicMaterial).depthTest = false
+      this.panel.add(b)
+    }
+    clickables.add({ mesh: this.ok, onClick: () => this.fold(true) })
+    clickables.add({ mesh: this.info, onClick: () => this.fold(false), reopen: () => this.fold(false, false) })
+    this.fold(this.collapsed, false)
     this.dom.className = 'hud-dom'
     document.body.appendChild(this.dom)
+  }
+
+  /** Fold the panel away to its "i" (closed), or open it again. */
+  fold(closed: boolean, remember = true): void {
+    this.collapsed = closed
+    ;(this.panel.material as THREE.MeshBasicMaterial).visible = !closed
+    this.ok.visible = !closed
+    this.info.visible = closed
+    if (remember) {
+      if (closed) closedNotes.close('hud')
+      else closedNotes.open('hud')
+    }
+    this.dirty = true
   }
 
   /** Queue a spoken line (subtitle). Lines play one after another. */
@@ -59,6 +95,7 @@ export class Hud {
   now(text: string, seconds = 3, speaker?: string): void {
     this.subtitle = { text, speaker, until: this.clock + seconds }
     this.dirty = true
+    if (this.collapsed) this.pulse = 2
   }
 
   /** Persistent instruction line; empty string clears it. */
@@ -93,11 +130,18 @@ export class Hud {
       const next = this.queue.shift()!
       this.subtitle = { ...next, until: this.clock + next.until }
       this.dirty = true
+      if (this.collapsed) this.pulse = 2
     }
     const visible = !!(this.subtitle || this.prompt || this.timer)
     this.panel.visible = visible && inXr
     if (this.dirty) this.redraw()
     if (visible && inXr) this.follow(dt)
+    // Folded away and something new came in: the "i" throbs for a moment.
+    this.pulse = Math.max(0, this.pulse - dt)
+    if (this.collapsed) this.info.scale.setScalar(1 + 0.35 * Math.abs(Math.sin(this.pulse * 6)) * Math.min(1, this.pulse))
+    // OK sits just under whatever's written.
+    const planeH = (1.1 * H) / W
+    this.ok.position.y = (0.5 - this.contentBottom / H) * planeH - 0.035
   }
 
   private follow(dt: number): void {
@@ -142,9 +186,10 @@ export class Hud {
       this.block(this.prompt, y, 'rgba(10, 50, 70, 0.8)', '#bff1ff', '34px system-ui, sans-serif')
       dom.push(this.prompt)
     }
+    this.contentBottom = Math.min(H - 10, y + (this.prompt ? 70 : 0))
     this.texture.needsUpdate = true
     this.dom.textContent = dom.join('  ·  ')
-    this.dom.style.display = dom.length ? '' : 'none'
+    this.dom.style.display = dom.length && !this.collapsed ? '' : 'none'
   }
 
   private block(text: string, y: number, bg: string, fg: string, font: string): number {
