@@ -421,6 +421,12 @@ Fixed:
 - **In a crew.** The host's device runs the game (dice, turns, sailors) and tells everyone; moves from anyone else go to the host. A crewmate who leaves mid-game, or disconnects, has a sailor take their dice; someone who dawdles for a minute has a sailor play that turn for them.
 - **Replaced tug-of-war**, which is gone.
 
+## Walk the plank, and Rose's theme
+
+- **Walk the plank.** To starboard, between the cannons abreast of the gear rack: three steps up to the rail and a plank out over the sea (sign: "Walk the Plank"). Walk out and off the end: a big splash, then two seconds in the deep (dark blue below, light from above, bubbles rising), and you're hanging at the bottom of a rope ladder down the hull a little further aft, facing the ship. Grip the rungs and pull yourself up; at the top you're helped over the rail onto the deck ("Back aboard, dripping wet. Again?"). Before the attack, any fall into the sea does this; once the attack is on, going over the side is still the dive into Level 1.
+- **Rose.** Take her hand (grip anywhere on her arms, shoulders or waist), or strike the pose behind her as before. Her theme plays, and the sky, sea and light turn a deep blue for 5 seconds (fading in and out) before golden hour comes back. The crew hear and see it too.
+- **The music.** "My Heart Will Go On" is copyrighted, so the game doesn't copy it. Rose's theme is an original tin-whistle air over soft strings, synthesized in code (`client/src/audio/roseTheme.ts`). To use a recording you have the rights to instead, add it as `client/public/audio/rose-theme.mp3`; the game plays that file when it's there.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.

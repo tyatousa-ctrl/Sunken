@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { AudioSystem } from '../audio/AudioSystem'
 import type { Hand } from '../input/Hand'
+import type { Interactable } from '../interaction/GrabSystem'
 import { Label } from '../ui/Label'
 import { DECK_Y, type Galleon } from '../world/ship/Galleon'
 import { DECK_BOW_Z } from './deck'
@@ -25,6 +26,10 @@ export class TitanicBow {
   private readonly arms: THREE.Object3D[] = []
   private readonly hair: THREE.Mesh
   private readonly shawl: THREE.Mesh
+  /** Grip Rose (her hand, arm, shoulder...) to fly with her too. */
+  readonly handle: Interactable
+  /** Flying, by gripping her (the pose calls `update`'s callback instead). */
+  onGrabbed: () => void = () => {}
   private readonly sign = new Label({ width: 0.62, canvasWidth: 620, canvasHeight: 250, billboard: true })
   private hold = 0
   private cooldown = 0
@@ -104,12 +109,19 @@ export class TitanicBow {
     this.rose.position.copy(ROSE_AT)
     ship.shake.add(this.rose)
 
+    this.handle = new RoseHandle(this.rose, (hand) => {
+      if (this.cooldown > 0) return
+      this.cooldown = COOLDOWN_SECONDS
+      this.fly([hand])
+      this.onGrabbed()
+    })
+
     // A small sign on the rail beside her.
     this.sign.mesh.position.set(0.75, DECK_Y + 1.9, DECK_BOW_Z + 2.2)
     ship.shake.add(this.sign.mesh)
     this.sign.set([
       { text: 'Rose', size: 44, bold: true, color: '#f2b64a' },
-      { text: 'Stand behind her and spread your arms wide', size: 26 },
+      { text: 'Take her hand, or stand behind her and spread your arms wide', size: 26 },
       { text: '...and fly!', size: 26, color: '#ffe0a0' },
     ])
   }
@@ -161,6 +173,36 @@ export class TitanicBow {
     this.audio.play('wind', this.roseHead, 1)
     for (const h of hands) h.pulse(0.8, 400)
   }
+}
+
+/** Rose to hold on to: anywhere on her arms, shoulders or waist. She doesn't move; you just hold on. */
+class RoseHandle implements Interactable {
+  readonly pullable = false
+  private readonly points = [
+    [0, 1.2, 0], [0, 0.9, 0], [0, 1.55, 0],
+    ...[-1, 1].flatMap((side) => [[side * 0.17, 1.36, 0], [side * 0.35, 1.36, 0.06], [side * 0.55, 1.36, 0.1], [side * 0.62, 1.36, 0.12]]),
+  ].map(([x, y, z]) => new THREE.Vector3(x, y, z))
+  private readonly v = new THREE.Vector3()
+
+  constructor(
+    private readonly rose: THREE.Object3D,
+    private readonly onGrab: (hand: Hand) => void,
+  ) {}
+
+  grabGap(point: THREE.Vector3): number {
+    let best = Infinity
+    for (const p of this.points) best = Math.min(best, this.rose.localToWorld(this.v.copy(p)).distanceTo(point))
+    return best - 0.14
+  }
+
+  grab(hand: Hand): void {
+    hand.pulse(0.5, 60)
+    this.onGrab(hand)
+  }
+
+  release(): void {}
+
+  setHighlight(): void {}
 }
 
 function ropeBetween(a: THREE.Vector3, b: THREE.Vector3, radius: number, material: THREE.Material): THREE.Mesh {

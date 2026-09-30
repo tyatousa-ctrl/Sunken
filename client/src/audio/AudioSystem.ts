@@ -27,6 +27,11 @@ export class AudioSystem {
     camera.add(this.listener)
   }
 
+  /** Where music goes (through the listener, like everything else). */
+  get output(): AudioNode {
+    return this.listener.getInput()
+  }
+
   get context(): AudioContext {
     return this.listener.context
   }

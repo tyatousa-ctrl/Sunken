@@ -418,6 +418,12 @@ export class Player {
     this.physics.velocity.lerp(pullVelocity, 0.5)
   }
 
+  /** Turn (about your head) to look along this world yaw (0: looking down -z). */
+  faceYaw(yaw: number): void {
+    this.camera.getWorldDirection(this.v1)
+    this.rotateAroundHead(yaw - Math.atan2(-this.v1.x, -this.v1.z))
+  }
+
   private rotateAroundHead(angle: number): void {
     if (angle === 0) return
     this.rig.updateMatrixWorld(true)

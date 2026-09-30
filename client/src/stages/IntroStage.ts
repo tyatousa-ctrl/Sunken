@@ -35,12 +35,16 @@ import { RAT_GAME_AT, WhackARat } from '../intro/WhackARat'
 import { FIRE_AT, RatRoast, SKEWERS_AT } from '../intro/RatRoast'
 import { CART_AT, CannoliCart } from '../intro/CannoliCart'
 import { DICE_AT, LiarsDice, TABLE_RADIUS } from '../intro/LiarsDice'
+import { Plank } from '../intro/Plank'
+import { playRoseTheme } from '../audio/roseTheme'
 import { Level1Stage } from './Level1Stage'
 import { deckHalfWidth, DECK_BOW_Z, FOREMAST_Z, STRETCH } from '../intro/deck'
 
 /** The "harmless merchant" anchored in the bay, ~150 m off the starboard bow. */
 const ENEMY_POSITION = new THREE.Vector3(110, 0, -100)
 const RAIL_MARGIN = 0.35
+/** How long the sky stays deep blue when you fly with Rose (s). */
+const DUSK_SECONDS = 5
 /** How far off the other ship lies once the fight starts (m). */
 const ENEMY_BATTLE_RANGE = 50
 const PULL_COOLDOWN = 2.5
@@ -108,7 +112,7 @@ export class IntroStage implements Stage {
   // The rigging net is a handhold: grip it to climb.
   /** Held things shown in crewmates' hands. */
   private heldSync: HeldSync | null = null
-  private readonly grab = new GrabSystem({ rocks: [], climb: (p) => this.rigs?.some((r) => r.onNet(p, 0.12)) ?? false })
+  private readonly grab = new GrabSystem({ rocks: [], climb: (p) => (this.rigs?.some((r) => r.onNet(p, 0.12)) ?? false) || (this.plank?.onLadder(p, 0.12) ?? false) })
   /** The main mast's net and nest (aft of it); `rigs` also has the foremast's (forward of it). */
   private rigging!: Rigging
   private rigs!: Rigging[]
@@ -135,6 +139,10 @@ export class IntroStage implements Stage {
   private cannoli!: CannoliCart
   /** Liar's Dice round a barrel table, amidships. */
   private dice!: LiarsDice
+  /** Walk the plank to starboard (and the rope ladder back up). */
+  private plank!: Plank
+  /** Seconds left of the deep-blue dusk at the bow with Rose (and how long it lasts). */
+  private duskLeft = 0
   /** The bow: bowsprit, and Rose to fly with. */
   private bow!: TitanicBow
   private swivelKey!: LooseItem
@@ -210,6 +218,9 @@ export class IntroStage implements Stage {
     const foreRig = new Rigging(this.ship, FORE_RIG)
     this.rigs = [this.rigging, foreRig]
     this.bow = new TitanicBow(this.ship, game.audio)
+    // Take her hand (or strike the pose behind her) to fly with her.
+    this.grab.add(this.bow.handle)
+    this.bow.onGrabbed = () => this.kingOfTheWorld(null)
     // Ziplines: from the main nest down to the deck and to Polly, overhead from nest to nest, and from
     // the front nest down to the bow. Every one goes both ways; the nest ends land you in the nest.
     const mainFloor = this.rigging.nestFloorY
@@ -290,6 +301,14 @@ export class IntroStage implements Stage {
       setBurn: (amount) => (game.vignette.burn = amount),
     })
     this.cannoli = new CannoliCart(this.ship, this.grab, { audio: game.audio, cream: this.debris, camera: game.camera, say: (text, seconds) => game.hud.now(text, seconds) })
+    this.plank = new Plank(this.ship, this.root, {
+      audio: game.audio,
+      splash: this.splash,
+      player: game.player,
+      camera: game.camera,
+      hands: () => game.hands,
+      say: (text, seconds) => game.hud.now(text, seconds),
+    })
     this.dice = new LiarsDice(this.ship, {
       audio: game.audio,
       confetti: this.fire,
@@ -397,13 +416,25 @@ export class IntroStage implements Stage {
     this.roast.update(dt)
     this.cannoli.update(dt)
     this.dice.update(dt, game.camera)
+    this.plank.update(dt)
+    // Flying with Rose: the sky goes deep blue for a few seconds, fading in and out.
+    if (this.duskLeft > 0) {
+      this.duskLeft = Math.max(0, this.duskLeft - dt)
+      const t = DUSK_SECONDS - this.duskLeft
+      this.above.setDusk(Math.min(1, t / 0.8, this.duskLeft / 1.2))
+    }
     if (this.phase !== 'overboard') this.bow.update(dt, game.camera.getWorldPosition(this.v), game.hands, game.camera, () => this.kingOfTheWorld(null))
     this.swords.face(game.camera)
     for (const z of this.ziplines) z.face(game.camera)
     if (this.phase === 'fakeout') this.updateFakeout(dt)
     else if (this.phase === 'attack') this.updateAttack(dt, elapsed)
 
-    if (game.player.inWater && this.phase !== 'overboard') this.overboard()
+    if (game.player.inWater && this.phase !== 'overboard') {
+      // Before the attack, the only way in is off the plank (or over the rail somehow): a dunk and the
+      // ladder back up. Once the attack's on, going over the side is the dive.
+      if (this.phase === 'fakeout') this.plank.dunk()
+      else this.overboard()
+    }
   }
 
   exit(): void {
@@ -473,6 +504,9 @@ export class IntroStage implements Stage {
   /** Flying at the bow with Rose: you (`who` null) or a crewmate shouts it, and Rose answers. */
   private kingOfTheWorld(who: string | null): void {
     const { game } = this
+    // Her theme swells, and the evening turns deep blue around you.
+    playRoseTheme(game.audio.context, game.audio.output)
+    this.duskLeft = DUSK_SECONDS
     game.hud.now(who ? `${who}: "I'M THE KING OF THE WORLD!"` : '"I\'M THE KING OF THE WORLD!"', 4)
     speak("I'm the king of the world!", { pitch: 0.95, rate: 1.05, volume: who ? 0.6 : 1 })
     setTimeout(() => speak("I'm flying, Jack!", { pitch: 1.45, rate: 1, volume: 0.8 }), 1900)
@@ -1148,9 +1182,12 @@ export class IntroStage implements Stage {
       kind: 'walk',
       waterY: 0,
       // Hanging on a net, or dangling from the rope between the nests.
-      climbable: (p, reach) => this.rigs.some((r) => r.onNet(p, reach)),
-      climbUp: (target) => this.nearestRig(this.game.camera.getWorldPosition(new THREE.Vector3())).upTheNet(target),
-      climbHold: (head, target) => this.nearestRig(head).holdOffset(head, target),
+      climbable: (p, reach) => this.rigs.some((r) => r.onNet(p, reach)) || this.plank.onLadder(p, reach),
+      climbUp: (target) => {
+        const head = this.game.camera.getWorldPosition(new THREE.Vector3())
+        return this.plank.nearLadder(head) ? this.plank.ladderUp(target) : this.nearestRig(head).upTheNet(target)
+      },
+      climbHold: (head, target) => (this.plank.nearLadder(head) ? this.plank.ladderHold(head, target) : this.nearestRig(head).holdOffset(head, target)),
       groundHeight: (x, z, below) => {
         if (below !== undefined) {
           for (const r of this.rigs ?? []) {
@@ -1160,11 +1197,27 @@ export class IntroStage implements Stage {
         }
         const upper = this.quarterdeck?.groundAt(x, z, below) ?? null
         if (upper !== null) return upper
+        // The steps up to the plank, and the plank out over the sea.
+        if (this.plank) {
+          const q = ship.worldToLocal(local.set(x, below ?? 0, z))
+          const plank = this.plank.groundAt(q.x, q.z, below === undefined ? undefined : q.y + 0.001)
+          if (plank !== null) return ship.localToWorld(local.set(q.x, plank, q.z)).y
+        }
         const p = toLocal(x, z)
         if (p.z > STERN_Z || p.z < DECK_BOW_Z || Math.abs(p.x) > deckHalfWidth(p.z)) return null
         return ship.localToWorld(p.setY(DECK_Y)).y
       },
       constrain: (head, feetY) => {
+        if (feetY !== undefined && this.plank) {
+          // Up the steps and out along the plank.
+          const q = ship.worldToLocal(local.set(head.x, feetY, head.z))
+          if (this.plank.constrain(q, q.y)) {
+            const world = ship.localToWorld(q)
+            head.x = world.x
+            head.z = world.z
+            return
+          }
+        }
         if (feetY !== undefined && this.quarterdeck) {
           // Up the stairs or on the quarterdeck: its own railings apply.
           const q = ship.worldToLocal(local.set(head.x, feetY, head.z))

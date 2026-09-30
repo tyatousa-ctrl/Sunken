@@ -5,6 +5,9 @@ import { Particles } from '../../fx/Particles'
 export const SUN_DIR = new THREE.Vector3(0.35, 0.13, 0.93).normalize()
 const HORIZON = new THREE.Color(0xf1c28e)
 const ZENITH = new THREE.Color(0x4c82bf)
+/** A deep blue dusk (the sky and light for a moment at the bow with Rose). */
+const DUSK_HORIZON = new THREE.Color(0x1d3566)
+const DUSK_ZENITH = new THREE.Color(0x07143a)
 
 // The world above water at golden hour off Sicily: sky, animated sea, limestone cliffs with a
 // lighthouse, and Mount Etna smoking on the horizon. Everything is built in code.
@@ -12,10 +15,16 @@ export class AboveWater {
   /** The sun as seen from the ship (turns as the ship turns). */
   private readonly sunDir = SUN_DIR.clone()
   private readonly sun: THREE.DirectionalLight
+  private readonly hemi: THREE.HemisphereLight
+  private readonly horizon = HORIZON.clone()
+  private readonly zenith = ZENITH.clone()
+  private readonly scene: THREE.Scene
+  private dusk = 0
   private readonly oceanUniforms = {
     uTime: { value: 0 },
     uSun: { value: this.sunDir },
-    uHorizon: { value: HORIZON },
+    uHorizon: { value: this.horizon },
+    uDusk: { value: 0 },
     ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
   }
   private readonly plume = new Particles({ max: 60, gravity: 0, drag: 0 })
@@ -27,15 +36,17 @@ export class AboveWater {
    * and the lights stay in `root`.
    */
   constructor(scene: THREE.Scene, root: THREE.Group, scenery: THREE.Object3D = root) {
+    this.scene = scene
     scene.background = HORIZON.clone()
     scene.fog = new THREE.Fog(HORIZON.clone(), 250, 4200)
 
-    root.add(new THREE.HemisphereLight(0xdcebff, 0x8a7350, 2.1))
+    this.hemi = new THREE.HemisphereLight(0xdcebff, 0x8a7350, 2.1)
+    root.add(this.hemi)
     this.sun = new THREE.DirectionalLight(0xffd3a0, 2.8)
     this.sun.position.copy(SUN_DIR).multiplyScalar(100)
     root.add(this.sun)
 
-    root.add(makeSky(this.sunDir))
+    root.add(makeSky(this.sunDir, this.horizon, this.zenith))
     scenery.add(this.makeOcean())
     scenery.add(makeCliffs())
     const lighthouse = makeLighthouse()
@@ -43,6 +54,23 @@ export class AboveWater {
     scenery.add(lighthouse)
     scenery.add(makeEtna())
     scenery.add(this.plume.points)
+  }
+
+  /** Fade the sky, sea and light toward a deep blue dusk (0: golden hour, 1: dusk). */
+  setDusk(t: number): void {
+    t = THREE.MathUtils.clamp(t, 0, 1)
+    if (t === this.dusk) return
+    this.dusk = t
+    this.horizon.lerpColors(HORIZON, DUSK_HORIZON, t)
+    this.zenith.lerpColors(ZENITH, DUSK_ZENITH, t)
+    this.oceanUniforms.uDusk.value = t
+    const fog = this.scene.fog as THREE.Fog | null
+    if (fog?.color) fog.color.copy(this.horizon)
+    if (this.scene.background instanceof THREE.Color) this.scene.background.copy(this.horizon)
+    this.hemi.intensity = THREE.MathUtils.lerp(2.1, 0.9, t)
+    this.hemi.color.set(0xdcebff).lerp(new THREE.Color(0x7d9be0), t)
+    this.sun.intensity = THREE.MathUtils.lerp(2.8, 0.45, t)
+    this.sun.color.set(0xffd3a0).lerp(new THREE.Color(0x9bb0ff), t)
   }
 
   /** The ship has turned to `heading` (radians, CCW from above): the sun swings the other way. */
@@ -91,6 +119,7 @@ export class AboveWater {
         uniform float uTime;
         uniform vec3 uSun;
         uniform vec3 uHorizon;
+        uniform float uDusk;
         varying vec3 vWorld;
         // Slope of a few travelling sine swells, for a cheap animated normal.
         vec2 slope(vec2 p) {
@@ -105,11 +134,11 @@ export class AboveWater {
           vec3 n = normalize(vec3(-slope(vWorld.xz).x, 1.0, -slope(vWorld.xz).y));
           vec3 view = normalize(cameraPosition - vWorld);
           float fresnel = pow(1.0 - max(dot(n, view), 0.0), 4.0);
-          vec3 deep = vec3(0.05, 0.22, 0.34);
+          vec3 deep = mix(vec3(0.05, 0.22, 0.34), vec3(0.01, 0.05, 0.16), uDusk);
           vec3 color = mix(deep, uHorizon * 0.95, clamp(fresnel * 1.2, 0.0, 1.0));
           vec3 h = normalize(uSun + view);
           float glint = pow(max(dot(n, h), 0.0), 220.0) * 3.0;
-          color += vec3(1.0, 0.85, 0.6) * glint;
+          color += mix(vec3(1.0, 0.85, 0.6), vec3(0.6, 0.7, 1.0), uDusk) * glint * (1.0 - 0.6 * uDusk);
           gl_FragColor = vec4(color, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -124,9 +153,9 @@ export class AboveWater {
 
 const ETNA_TOP = new THREE.Vector3(-1900, 880, -2700)
 
-function makeSky(sunDir: THREE.Vector3): THREE.Mesh {
+function makeSky(sunDir: THREE.Vector3, horizon: THREE.Color, zenith: THREE.Color): THREE.Mesh {
   const material = new THREE.ShaderMaterial({
-    uniforms: { uSun: { value: sunDir }, uHorizon: { value: HORIZON }, uZenith: { value: ZENITH } },
+    uniforms: { uSun: { value: sunDir }, uHorizon: { value: horizon }, uZenith: { value: zenith } },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
       void main() {
