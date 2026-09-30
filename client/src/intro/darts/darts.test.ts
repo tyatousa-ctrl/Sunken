@@ -114,3 +114,32 @@ describe('Around the Clock', () => {
     assert.equal(g.throw({ points: 25, multiplier: 1, segment: 25, label: '25' }).won, true)
   })
 })
+
+describe('head to head (Red and Blue sets)', () => {
+  it('lets the other side step in: their turn starts and the forfeit turn keeps its score', () => {
+    const game = new DartsGame([{ name: 'Red', color: '#f00' }, { name: 'Blue', color: '#00f' }])
+    game.throw(single(20))
+    assert.equal(game.players[0].remaining, 281)
+    game.startTurn(1)
+    assert.equal(game.player.name, 'Blue')
+    game.throw(treble(20))
+    assert.equal(game.players[1].remaining, 241)
+    assert.equal(game.players[0].remaining, 281)
+    assert.equal(game.dartsThisTurn, 1)
+  })
+
+  it('a bust after stepping in goes back to that side\'s own start', () => {
+    const game = new DartsGame([{ name: 'Red', color: '#f00' }, { name: 'Blue', color: '#00f' }], '301', false)
+    game.startTurn(1)
+    game.throw(treble(20))
+    game.throw(treble(20))
+    game.throw(treble(20))
+    assert.equal(game.players[1].remaining, 121)
+    assert.equal(game.player.name, 'Red')
+    game.startTurn(1)
+    game.throw(treble(20))
+    game.throw(treble(20))
+    game.throw(single(2))
+    assert.equal(game.players[1].remaining, 121)
+  })
+})

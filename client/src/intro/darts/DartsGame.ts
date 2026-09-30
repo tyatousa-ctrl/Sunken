@@ -93,6 +93,14 @@ export class DartsGame {
     return { bust: false, won: false, turnOver: false }
   }
 
+  /** The other side steps up to throw: their turn starts now (whatever was left of this one is gone). */
+  startTurn(index: number): void {
+    if (index < 0 || index >= this.players.length || index === this.current) return
+    this.current = index
+    this.dartsThisTurn = 0
+    this.turnStart = this.player.remaining
+  }
+
   /** A player who passes out loses the rest of their turn. */
   skipTurn(): void {
     this.message = `${this.player.name} is out cold. Turn skipped.`

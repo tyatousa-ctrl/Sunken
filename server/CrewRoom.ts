@@ -194,6 +194,15 @@ export class CrewRoom extends Room<{ state: CrewState }> {
       this.broadcast('held', { by: client.sessionId, stage: String(msg.stage ?? '').slice(0, 16), items }, { except: client })
     })
 
+    // Darts: a throw (to show it flying) and where it landed (to score it), for everyone else.
+    this.onMessage('dart', (client, msg: { i?: number; k?: number; p?: number[]; v?: number[]; at?: number[] | null }) => {
+      const finite = (a: unknown, n: number) => Array.isArray(a) && a.length === n && a.every((x) => Number.isFinite(x))
+      const i = Number(msg?.i)
+      if (!this.player(client) || !Number.isInteger(i) || i < 0 || i > 11) return
+      if (msg.k === 0 && finite(msg.p, 3) && finite(msg.v, 3)) this.broadcast('dart', { i, k: 0, p: msg.p, v: msg.v }, { except: client })
+      else if (msg.k === 1) this.broadcast('dart', { i, k: 1, at: finite(msg.at, 2) ? msg.at : null }, { except: client })
+    })
+
     // Shared objects: first grab wins.
     this.onMessage('claim', (client, msg: { id?: string }) => {
       const id = typeof msg?.id === 'string' ? msg.id.slice(0, 32) : ''

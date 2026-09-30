@@ -11,7 +11,8 @@ import { ATTACK_SECONDS, formatClock, railsOpen, secondsLeft } from '../intro/at
 import { CLAY_Z, ClayRange } from '../intro/ClayRange'
 import { Crew } from '../intro/Crew'
 import { BARREL_POSITION, BeerBarrel } from '../intro/BeerBarrel'
-import { BOARD_POSITION, DartBoardArea, THROW_DISTANCE } from '../intro/DartBoard'
+import { BOARD_POSITION, DART_TEAMS, DartBoardArea, THROW_DISTANCE } from '../intro/DartBoard'
+import type { DartsMode } from '../intro/darts/DartsGame'
 import { DrunkState } from '../intro/drunk'
 import { GEAR_Z, GearRack, TABLE_POSITION, type GearPiece } from '../intro/GearRack'
 import { Shotgun } from '../intro/Shotgun'
@@ -64,6 +65,8 @@ const OBSTACLES: Obstacle[] = [
   { x: GUN_RACK.x, z: GUN_RACK.z, r: 0.6 },
   { x: BARREL_POSITION.x, z: BARREL_POSITION.z, r: 0.6 },
   { x: -2.35, z: BOARD_POSITION.z - THROW_DISTANCE - 0.1, r: 0.15 },
+  // The Blue darts' rack, the other side of the line.
+  { x: 2 * BOARD_POSITION.x + 2.35, z: BOARD_POSITION.z - THROW_DISTANCE - 0.1, r: 0.15 },
   { x: CREW_BOARD_SPOT.x, z: CREW_BOARD_SPOT.z, r: 0.35 },
   { x: MATCH_CRATE.x, z: MATCH_CRATE.z, r: 0.35 },
   ...NET_OBSTACLES,
@@ -263,7 +266,7 @@ export class IntroStage implements Stage {
     })
     const walk = (this.walkEnv = this.walkEnvironment())
     this.crewBoard = new CrewBoard(this.ship, game.audio, (cls) => this.chooseClass(cls))
-    this.darts = new DartBoardArea(this.root, this.ship, this.grab, [{ name: 'You', color: '#e8b930' }], {
+    this.darts = new DartBoardArea(this.root, this.ship, this.grab, DART_TEAMS, {
       audio: game.audio,
       debris: this.debris,
       ground: walk.groundHeight,
@@ -462,12 +465,22 @@ export class IntroStage implements Stage {
       }
       sword.onReleased = () => net.send('release', { id })
     })
+    // Darts: everyone sees each throw, and the landing (from the thrower's device) scores everywhere.
+    const modes: DartsMode[] = ['301', '501', 'clock']
+    this.darts.onThrow = (i, p, v) => net.send('dart', { i, k: 0, p: p.toArray(), v: v.toArray() })
+    this.darts.onLanded = (i, at) => net.send('dart', { i, k: 1, at: at ? at.toArray() : null })
+    this.darts.onMode = (mode, doubleOut) => net.send('prop', { key: 'intro/darts', v: [modes.indexOf(mode), doubleOut ? 1 : 0] })
+    on<{ i: number; k: number; p?: number[]; v?: number[]; at?: number[] | null }>('dart', (msg) => {
+      if (msg.k === 0 && msg.p && msg.v) this.darts.remoteThrow(msg.i, new THREE.Vector3().fromArray(msg.p), new THREE.Vector3().fromArray(msg.v))
+      else if (msg.k === 1) this.darts.remoteLanded(msg.i, msg.at ? new THREE.Vector2().fromArray(msg.at) : null)
+    })
     // The clay switches are shared: flipping one flips it for everybody.
     const switches = { 'intro/clayCount': this.range.countSwitch, 'intro/clayAuto': this.range.autoSwitch }
     for (const [key, sw] of Object.entries(switches)) sw.onFlip = (index) => net.send('prop', { key, v: [index] })
     on<{ key: string; v: number[]; by?: string }>('prop', (msg) => {
       const sw = switches[msg.key as keyof typeof switches]
       if (sw) sw.show(msg.v[0] === 1 ? 1 : 0)
+      if (msg.key === 'intro/darts') this.darts.setMode(modes[msg.v[0]] ?? '301', msg.v[1] === 1)
       // A crewmate flew with Rose (recently: the prop cache replays old ones to late joiners).
       if (msg.key === 'intro/king' && net.serverNow() - msg.v[0] < 5000) {
         const who = net.roster().find((p) => p.sessionId === msg.by)?.name ?? 'Someone'

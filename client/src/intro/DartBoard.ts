@@ -40,9 +40,23 @@ export interface DartsContext {
 
 type DartState = 'rack' | 'held' | 'flying' | 'stuck' | 'falling' | 'down'
 
-// The dart board on the cabin wall: the board, a slate scoreboard, a throw line, a rack with three
-// darts per player colour, and two buttons (game mode, double-out) you press with a hand.
+/** The two sides: a set of three darts each, on a rack of its own either side of the throw line. */
+export const DART_TEAMS = [
+  { name: 'Red', color: '#d8412f' },
+  { name: 'Blue', color: '#2f7fd8' },
+]
+
+// The dart board on the cabin wall: the board, a slate scoreboard, a throw line, two racks (Red and
+// Blue, three darts each) for playing head to head, and two buttons (game mode, double-out) you press
+// with a hand. A dart scores for its own colour; picking up the other colour's darts starts their turn.
+// In a crew, throws, landings and the buttons are shared, so everyone plays the same game.
 export class DartBoardArea {
+  /** Tell the crew: a dart left someone's hand here (root-local position and velocity). */
+  onThrow: (index: number, from: THREE.Vector3, velocity: THREE.Vector3) => void = () => {}
+  /** Tell the crew: where it ended up (board-local x, y if it stuck; null if it missed). */
+  onLanded: (index: number, at: THREE.Vector2 | null) => void = () => {}
+  /** Tell the crew: the game mode / double-out changed. */
+  onMode: (mode: DartsMode, doubleOut: boolean) => void = () => {}
   readonly game: DartsGame
   readonly board = new THREE.Group()
   readonly darts: Dart[] = []
@@ -59,6 +73,8 @@ export class DartBoardArea {
   /** How-to sign over the rack; the step you're on lights up. */
   private readonly sign = new Label({ width: 0.8, canvasWidth: 640, canvasHeight: 440, billboard: true })
   private readonly rackObject = new THREE.Group()
+  /** The Blue side's rack (starboard of the line). */
+  blueRack: THREE.Object3D | null = null
   /** Red aiming light on the board: where a held dart will land. */
   private readonly aimDot: THREE.Mesh
   /** The viewer's eye (set every frame), for sight-line aiming. */
@@ -121,25 +137,34 @@ export class DartBoardArea {
     oche.position.set(BOARD_POSITION.x, DECK_Y + 0.003, BOARD_POSITION.z - THROW_DISTANCE)
     ship.shake.add(oche)
 
-    // Rack: a post with a tray; each player colour gets three darts.
+    // Racks: a post with a tray for each side (Red to port of the line, Blue to starboard), three darts each.
     const rack = this.rackObject
     rack.position.copy(RACK_POSITION)
     this.sign.mesh.position.set(0, 1.75, 0)
     rack.add(this.sign.mesh)
+    const blueRack = new THREE.Group()
+    blueRack.position.set(BOARD_POSITION.x + (BOARD_POSITION.x - RACK_POSITION.x), RACK_POSITION.y, RACK_POSITION.z)
     const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a20, roughness: 0.85 })
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.0, 0.06), wood)
-    post.position.y = 0.5
-    const tray = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.14), wood)
-    tray.position.y = 1.0
-    rack.add(post, tray)
-    ship.shake.add(rack)
     players.forEach((player, p) => {
+      const r = p === 0 ? rack : blueRack
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.0, 0.06), wood)
+      post.position.y = 0.5
+      const tray = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.14), wood)
+      tray.position.y = 1.0
+      // A pennant in the side's colour on each post.
+      const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.1), new THREE.MeshStandardMaterial({ color: player.color, roughness: 0.8, side: THREE.DoubleSide }))
+      flag.position.set(0.1, 1.25, 0)
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.35, 6), wood)
+      pole.position.set(0.02, 1.2, 0)
+      r.add(post, tray, flag, pole)
+      ship.shake.add(r)
       for (let i = 0; i < 3; i++) {
-        const slot = new THREE.Vector3(-0.1 + i * 0.1, 1.03, -0.03 + p * 0.03)
-        const dart = new Dart(rack, slot, player.color, this)
+        const slot = new THREE.Vector3(-0.1 + i * 0.1, 1.03, 0)
+        const dart = new Dart(r, slot, player.color, this, p)
         this.darts.push(grab.add(dart))
       }
     })
+    this.blueRack = blueRack
     this.drawSlate()
   }
 
@@ -155,15 +180,38 @@ export class DartBoardArea {
     return this.ctx.ground(x, z)
   }
 
-  /** A dart finished: stuck in the board, or missed (wall, deck, overboard). */
-  scoreDart(score: DartScore, thrower: Hand | null): void {
+  /** A dart finished: stuck in the board, or missed (wall, deck, overboard). It scores for its colour. */
+  scoreDart(score: DartScore, thrower: Hand | null, team = 0): void {
     if (this.interrupted) return
-    if (score.points === 50) this.ctx.onBullseye()
+    if (score.points === 50 && thrower) this.ctx.onBullseye()
     thrower?.pulse(score.points > 0 ? 0.6 : 0.2, 50)
+    // The other side stepped up: their turn now (the rest of this turn is forfeit).
+    if (team !== this.game.current && !this.game.winner) this.game.startTurn(team)
     const result = this.game.throw(score)
     this.drawSlate()
     if (result.turnOver) this.returnTimer = RETURN_DELAY
     if (result.won) this.returnTimer = 4
+  }
+
+  /** A crewmate threw dart `index`: show it flying (their device says where it lands). */
+  remoteThrow(index: number, from: THREE.Vector3, velocity: THREE.Vector3): void {
+    this.darts[index]?.flyRemote(from, velocity)
+  }
+
+  /** Where a crewmate's dart ended up: stick it there and score it, the same as on their device. */
+  remoteLanded(index: number, at: THREE.Vector2 | null): void {
+    const dart = this.darts[index]
+    if (!dart) return
+    dart.landRemote(at)
+    this.scoreDart(at ? scoreAt(at.x, at.y) : MISS, null, dart.team)
+  }
+
+  /** A crewmate pressed a button: same game here. */
+  setMode(mode: DartsMode, doubleOut: boolean): void {
+    if (this.game.mode === mode && this.game.doubleOut === doubleOut) return
+    this.game.reset(mode, doubleOut)
+    for (const d of this.darts) d.returnToRack()
+    this.drawSlate()
   }
 
   /** Blacked-out player loses their turn. */
@@ -273,6 +321,7 @@ export class DartBoardArea {
       line(0, '1. Grip a dart (or point at one and grip)'),
       line(1, '2. Stand behind the white line'),
       line(2, '3. Raise the dart in front of your eye: the red dot shows where it will land. Let go of grip (or pull the trigger) to throw'),
+      { text: 'Red darts here, Blue darts on the other rack: play head to head', size: 22, color: '#ffd9a0' },
       { text: 'Blue button: game  ·  Red button: double out (touch them)', size: 22, color: '#9fb2bb' },
     ])
     this.sign.face(camera)
@@ -299,12 +348,14 @@ export class DartBoardArea {
     this.game.reset(next)
     for (const d of this.darts) d.returnToRack()
     this.drawSlate()
+    this.onMode(this.game.mode, this.game.doubleOut)
   }
 
   private toggleDoubleOut(): void {
     this.game.reset(this.game.mode, !this.game.doubleOut)
     for (const d of this.darts) d.returnToRack()
     this.drawSlate()
+    this.onMode(this.game.mode, this.game.doubleOut)
   }
 
   private drawSlate(): void {
@@ -378,12 +429,18 @@ export class Dart implements Interactable, HeldSyncable {
   private readonly q = new THREE.Quaternion()
   private readonly forward = new THREE.Vector3(0, 0, -1)
   private readonly v = new THREE.Vector3()
+  private readonly stuckAt = new THREE.Vector2()
+
+  /** Flying on a crewmate's say-so: its landing comes from their device, not from here. */
+  private remote = false
 
   constructor(
     rack: THREE.Object3D,
     slot: THREE.Vector3,
     color: string,
     private readonly area: DartBoardArea,
+    /** Which side it belongs to (0 Red, 1 Blue). */
+    readonly team = 0,
   ) {
     const brass = new THREE.MeshStandardMaterial({ color: 0xc59a3c, roughness: 0.3, metalness: 0.8 })
     const steel = new THREE.MeshStandardMaterial({ color: 0xb8bcc0, roughness: 0.25, metalness: 0.9 })
@@ -509,7 +566,40 @@ export class Dart implements Interactable, HeldSyncable {
       return
     }
     this.state = 'flying'
+    this.remote = false
     this.area.board.worldToLocal(this.prevLocal.copy(this.object.getWorldPosition(this.v)))
+    this.area.onThrow(this.area.darts.indexOf(this), this.object.position.clone(), this.velocity.clone())
+  }
+
+  /** A crewmate's throw: fly it from where it left their hand. */
+  flyRemote(from: THREE.Vector3, velocity: THREE.Vector3): void {
+    this.area.root.add(this.object)
+    this.object.visible = true
+    this.object.position.copy(from)
+    this.velocity.copy(velocity)
+    this.thrower = null
+    this.scored = true
+    this.remote = true
+    this.state = 'flying'
+    this.area.board.worldToLocal(this.prevLocal.copy(this.object.getWorldPosition(this.v)))
+  }
+
+  /** Where it really landed on the thrower's device: stuck in the board there, or on the deck. */
+  landRemote(at: THREE.Vector2 | null): void {
+    this.remote = false
+    this.object.visible = true
+    if (at) {
+      this.area.board.add(this.object)
+      this.object.position.set(at.x, at.y, 0.06)
+      this.object.quaternion.setFromUnitVectors(this.forward, new THREE.Vector3(0, 0, -1))
+      this.state = 'stuck'
+      this.area.audio.play('dartHit', this.object.getWorldPosition(this.v))
+    } else if (this.state === 'flying') {
+      this.state = 'falling'
+    } else if (this.state !== 'down' && this.state !== 'falling') {
+      this.state = 'down'
+      this.downTimer = RETURN_DELAY
+    }
   }
 
   setHighlight(on: boolean): void {
@@ -559,13 +649,20 @@ export class Dart implements Interactable, HeldSyncable {
       const y = this.prevLocal.y + (this.local.y - this.prevLocal.y) * t
       const dirLocal = this.v.copy(this.velocity).normalize().transformDirection(new THREE.Matrix4().copy(this.area.board.matrixWorld).invert())
       const pointFirst = -dirLocal.z > 0.55
+      // A crewmate's dart: keep flying until their device says where it landed.
+      if (this.remote) {
+        this.prevLocal.copy(this.local)
+        if (this.object.position.y < -2) this.state = 'down'
+        return
+      }
       if (Math.hypot(x, y) <= RADII.board && pointFirst) {
         this.area.board.add(this.object)
         this.object.position.set(x, y, 0.06)
         this.object.quaternion.setFromUnitVectors(this.forward, new THREE.Vector3(0, 0, -1))
         this.state = 'stuck'
         this.area.audio.play('dartHit', this.object.getWorldPosition(this.v))
-        this.finish(scoreAt(x, y))
+        this.stuckAt.set(x, y)
+        this.finish(scoreAt(x, y), this.stuckAt)
         return
       }
       // Hit flat, or hit the cabin wall around the board: bounces off and drops.
@@ -605,10 +702,11 @@ export class Dart implements Interactable, HeldSyncable {
     }
   }
 
-  private finish(score: DartScore): void {
+  private finish(score: DartScore, at: THREE.Vector2 | null = null): void {
     if (this.scored || !this.thrower) return
     this.scored = true
-    this.area.scoreDart(score, this.thrower)
+    this.area.scoreDart(score, this.thrower, this.team)
+    this.area.onLanded(this.area.darts.indexOf(this), at ? at.clone() : null)
     this.thrower = null
   }
 }
