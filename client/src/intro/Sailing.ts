@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { Particles } from '../fx/Particles'
-import { BOW_Z, STERN_Z, halfWidthAt, type Galleon } from '../world/ship/Galleon'
+import { STERN_Z, type Galleon } from '../world/ship/Galleon'
+import { deckHalfWidth, DECK_BOW_Z } from './deck'
 
 /** Cruising speed under sail (m/s, about 4 knots). */
 export const SAIL_SPEED = 2.2
@@ -56,7 +57,7 @@ export class Sailing {
     this.wakeTexture.wrapS = this.wakeTexture.wrapT = THREE.RepeatWrapping
     this.wakeTexture.repeat.set(1, 6)
     const wakeGeometry = new THREE.BufferGeometry()
-    const w0 = halfWidthAt(STERN_Z) * 0.9
+    const w0 = deckHalfWidth(STERN_Z) * 0.9
     const w1 = 16
     const len = 90
     wakeGeometry.setAttribute('position', new THREE.Float32BufferAttribute([-w0, 0, 0, w0, 0, 0, w1, 0, len, -w1, 0, len], 3))
@@ -71,8 +72,8 @@ export class Sailing {
 
     const collar = new THREE.Shape()
     const pts: THREE.Vector2[] = []
-    for (let z = BOW_Z; z <= STERN_Z; z += 1) pts.push(new THREE.Vector2(halfWidthAt(z) + 0.9, z))
-    for (let z = STERN_Z; z >= BOW_Z; z -= 1) pts.push(new THREE.Vector2(-(halfWidthAt(z) + 0.9), z))
+    for (let z = DECK_BOW_Z; z <= STERN_Z; z += 1) pts.push(new THREE.Vector2(deckHalfWidth(z) + 0.9, z))
+    for (let z = STERN_Z; z >= DECK_BOW_Z; z -= 1) pts.push(new THREE.Vector2(-(deckHalfWidth(z) + 0.9), z))
     collar.setFromPoints(pts)
     const collarGeometry = new THREE.ShapeGeometry(collar)
     collarGeometry.rotateX(Math.PI / 2)
@@ -176,7 +177,7 @@ export class Sailing {
     this.sprayTimer -= dt
     if (u > 0.3 && this.sprayTimer <= 0) {
       this.sprayTimer = 0.25
-      const bow = this.ship.group.localToWorld(new THREE.Vector3(0, 0.4, BOW_Z + 0.4))
+      const bow = this.ship.group.localToWorld(new THREE.Vector3(0, 0.4, DECK_BOW_Z + 0.4))
       for (const side of [-1, 1]) {
         const out = new THREE.Vector3(side * 1.4, 1.2 + Math.sin(elapsed * 3) * 0.3, 0.8).applyQuaternion(this.ship.group.quaternion)
         this.spray.emit({ position: bow, velocity: out.multiplyScalar(u), spread: 0.6, color: 0xf2f8ff, size: 0.12, life: 0.9, count: 3 })

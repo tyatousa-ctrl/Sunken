@@ -107,10 +107,14 @@ export class AttackSequence {
 
   private targetPoint(shot: CannonShot): THREE.Vector3 {
     const local = new THREE.Vector3()
-    if (shot.target === 'scoreboard') local.set(0, DECK_Y + 2.7, 0.3)
-    else if (shot.target === 'foremast') local.set(0, DECK_Y + 5, -8)
-    else if (shot.target === 'miss') local.set(shot.x, -DECK_Y, shot.z)
-    else local.set(shot.x, DECK_Y, shot.z)
+    const fore = this.ship.foremast.position.z
+    // The plan's deck spans z -11..8 of a short ship; spread it along a stretched one's whole deck.
+    const z = this.ship.stretch > 0 ? THREE.MathUtils.mapLinear(shot.z, -11, 8, fore - 12, 8) : shot.z
+    // The scoreboard hangs on the foremast (facing the bow) on a stretched ship, on the main mast otherwise.
+    if (shot.target === 'scoreboard') local.set(0, DECK_Y + 2.7, this.ship.stretch > 0 ? fore - 0.3 : 0.3)
+    else if (shot.target === 'foremast') local.set(0, DECK_Y + 5, fore)
+    else if (shot.target === 'miss') local.set(shot.x, -DECK_Y, z)
+    else local.set(shot.x, DECK_Y, z)
     return this.ship.group.localToWorld(local)
   }
 
@@ -179,7 +183,7 @@ export class AttackSequence {
     this.ship.foremast.rotation.z = u * 1.35
     this.ship.foremast.position.y = DECK_Y - u * 0.8
     if (this.mastFall >= 1) {
-      const at = this.ship.group.localToWorld(new THREE.Vector3(-6, 0, -8))
+      const at = this.ship.group.localToWorld(new THREE.Vector3(-6, 0, this.ship.foremast.position.z))
       this.fx.splash.emit({ position: at.setY(0.3), velocity: new THREE.Vector3(0, 7, 0), spread: 3, color: 0xeaf6ff, size: 0.6, life: 1.5, count: 50 })
       this.fx.audio.play('bigSplash', at)
       this.shakeTime = 0.6

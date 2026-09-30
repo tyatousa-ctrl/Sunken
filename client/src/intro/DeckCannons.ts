@@ -30,8 +30,8 @@ export interface CannonContext {
   fire: Particles
   splash: Particles
   debris: Particles
-  /** Does a cannonball moving from `a` to `b` (world) hit something? Returns the hit point, if any. */
-  hitTest: (a: THREE.Vector3, b: THREE.Vector3) => THREE.Vector3 | null
+  /** Does a cannonball moving from `a` to `b` (world) hit something (`swivel`: fired by the swivel gun)? Returns the hit point, if any. */
+  hitTest: (a: THREE.Vector3, b: THREE.Vector3, swivel: boolean) => THREE.Vector3 | null
   /** This player fired cannon `index` (tell the crew). */
   onFire: (index: number) => void
   /** What the quarterdeck's swivel gun stays trained on (world): the other ship. */
@@ -64,6 +64,8 @@ interface Ball {
 // a cannon's breech. The fuse fizzes, then BOOM: the ball flies out over the water.
 export class DeckCannons {
   readonly box: MatchBox
+  /** The quarterdeck's swivel gun (padlocked until someone finds the key). */
+  readonly swivel: SwivelGun
   private readonly guns: Gun[]
   private readonly balls: Ball[] = []
   private readonly sign = new Label({ width: 0.75, canvasWidth: 640, canvasHeight: 380, billboard: true })
@@ -79,7 +81,7 @@ export class DeckCannons {
     private readonly ctx: CannonContext,
   ) {
     this.guns = ship.cannons.map((c) => ({ ...c, fuse: -1, reload: 0, mine: false }))
-    const swivel = new SwivelGun(ship.shake, SWIVEL_SPOT)
+    const swivel = (this.swivel = new SwivelGun(ship.shake, SWIVEL_SPOT))
     this.guns.push({ touchHole: new THREE.Vector3(), muzzle: new THREE.Vector3(), side: 1, fuse: -1, reload: 0, mine: false, swivel })
 
     const crate = new THREE.Group()
@@ -113,6 +115,10 @@ export class DeckCannons {
     this.guns.forEach((gun, i) => {
       gun.reload = Math.max(0, gun.reload - dt)
       const hole = this.ship.shake.localToWorld(this.w.copy(gun.touchHole))
+      if (gun.swivel?.locked && flame && flame.distanceTo(hole) < TOUCH_REACH * 2) {
+        gun.swivel.nag(this.ctx.audio)
+        return
+      }
       if (gun.fuse < 0 && gun.reload === 0 && flame && flame.distanceTo(hole) < TOUCH_REACH) {
         gun.fuse = FUSE_SECONDS
         gun.mine = true
@@ -174,11 +180,12 @@ export class DeckCannons {
       ball.mesh.position.y -= 0.5 * GRAVITY * dt * dt
       ball.velocity.y -= GRAVITY * dt
       const to = ball.mesh.position
-      const hit = ball.mine ? this.ctx.hitTest(from, to) : null
+      const hit = ball.mine ? this.ctx.hitTest(from, to, ball.landIn !== undefined) : null
       let done = ball.age > BALL_LIFE
       if (hit) {
-        this.ctx.debris.emit({ position: hit, velocity: new THREE.Vector3(0, 3, 0), spread: 5, color: 0x5b3a21, size: 0.2, life: 2, count: 30 })
-        this.ctx.audio.play('impact', hit)
+        // A hit: a few splinters and a thump (she's built to take it, and she'll answer).
+        this.ctx.debris.emit({ position: hit, velocity: new THREE.Vector3(0, 1.5, 0), spread: 1.5, color: 0x5b3a21, size: 0.12, life: 1.4, count: 8 })
+        this.ctx.audio.play('thud', hit, 0.8)
         done = true
       } else if (to.y < 0) {
         this.ctx.splash.emit({ position: to.clone().setY(0.1), velocity: new THREE.Vector3(0, 7, 0), spread: 2.5, color: 0xeaf6ff, size: 0.35, life: 1.6, count: 30 })
@@ -203,7 +210,14 @@ function lobVelocity(from: THREE.Vector3, to: THREE.Vector3, t = lobTime(from.di
 
 // A swivel gun on a post at the quarterdeck rail: it turns on its own to stay trained on the other
 // ship. Light it like the deck cannons (a lit match to the touch hole) and it lobs a ball onto her.
-class SwivelGun {
+export class SwivelGun {
+  /** Padlocked over the touch hole: the key has to be found first. */
+  locked = true
+  /** Someone held a flame to the locked gun. */
+  onNag: () => void = () => {}
+  private readonly padlock = new THREE.Group()
+  private dropT = -1
+  private nagCooldown = 0
   private readonly yawPivot = new THREE.Group()
   private readonly barrel = new THREE.Group()
   private readonly sign = new Label({ width: 0.55, canvasWidth: 560, canvasHeight: 240, billboard: true })
@@ -239,22 +253,63 @@ class SwivelGun {
     const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.02, 8), iron)
     hole.position.set(0, 0.085, 0.27)
     this.barrel.add(tube, muzzleRing, knob, hole)
+    // An iron hasp over the touch hole, and a padlock hanging from it.
+    const hasp = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.012, 0.12), iron)
+    hasp.position.set(0, 0.095, 0.27)
+    const brassy = new THREE.MeshStandardMaterial({ color: 0xb08a3a, roughness: 0.4, metalness: 0.8 })
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.03), brassy)
+    body.position.y = -0.05
+    const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.006, 6, 12, Math.PI), iron)
+    const keyhole = new THREE.Mesh(new THREE.CircleGeometry(0.008, 8), new THREE.MeshBasicMaterial({ color: 0x111111 }))
+    keyhole.position.set(0, -0.05, 0.016)
+    this.padlock.add(hasp, body, shackle, keyhole)
+    this.padlock.position.set(0.075, 0.05, 0.27)
+    this.padlock.rotation.y = Math.PI / 2
+    this.barrel.add(this.padlock)
     this.yawPivot.add(this.barrel)
     group.add(this.yawPivot)
     this.sign.mesh.position.set(0, 1.75, 0)
     group.add(this.sign.mesh)
     this.sign.set([
-      { text: 'Swivel gun', size: 40, bold: true, color: '#f2b64a' },
-      { text: 'Always trained on that ship out there', size: 26 },
-      { text: 'Bring a lit match up from the box on deck', size: 24 },
-      { text: 'and touch it to the hole on top', size: 24 },
+      { text: '⚠ DON\'T LIGHT THIS! ⚠', size: 44, bold: true, color: '#ff5a4a' },
+      { text: 'Captain\'s orders: it stays trained on that ship', size: 24 },
+      { text: 'Padlocked, and the key put well out of the way', size: 24, color: '#d8cfb8' },
     ])
     parent.add(group)
+  }
+
+  /** The padlock (world), where the key goes. */
+  get lockPoint(): THREE.Vector3 {
+    return this.padlock.localToWorld(new THREE.Vector3(0, -0.05, 0))
+  }
+
+  /** The key turns: the padlock drops away (`now`: catching up, no fall). */
+  unlock(now = false): void {
+    if (!this.locked) return
+    this.locked = false
+    if (now) this.padlock.visible = false
+    else this.dropT = 0
+  }
+
+  /** A flame held to the locked touch hole. */
+  nag(audio: AudioSystem): void {
+    if (this.nagCooldown > 0) return
+    this.nagCooldown = 3
+    audio.play('click', this.lockPoint, 0.6)
+    this.onNag()
   }
 
   /** Turn (smoothly) to point along the lob that lands on `target` (world). */
   aim(target: THREE.Vector3, dt: number, camera: THREE.Camera): void {
     this.sign.face(camera)
+    this.nagCooldown = Math.max(0, this.nagCooldown - dt)
+    if (this.dropT >= 0 && this.dropT < 1) {
+      // The opened padlock tumbles off onto the deck.
+      this.dropT = Math.min(1, this.dropT + dt / 0.8)
+      this.padlock.position.y = 0.05 - this.dropT * this.dropT * 1.1
+      this.padlock.rotation.z = this.dropT * 2
+      if (this.dropT === 1) this.padlock.visible = false
+    }
     const muzzle = this.barrel.localToWorld(this.local.set(0, 0, -0.6))
     const dir = lobVelocity(muzzle, target)
     // Into the post's frame (the ship may be turning or shaking).

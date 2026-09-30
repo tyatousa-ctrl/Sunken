@@ -6,12 +6,12 @@ import { GrabSystem } from '../interaction/GrabSystem'
 import type { WalkEnvironment } from '../movement/environment'
 import { AttackSequence } from '../intro/AttackSequence'
 import { ATTACK_SECONDS, formatClock, railsOpen, secondsLeft } from '../intro/attackTimeline'
-import { ClayRange } from '../intro/ClayRange'
+import { CLAY_Z, ClayRange } from '../intro/ClayRange'
 import { Crew } from '../intro/Crew'
 import { BARREL_POSITION, BeerBarrel } from '../intro/BeerBarrel'
 import { BOARD_POSITION, DartBoardArea, THROW_DISTANCE } from '../intro/DartBoard'
 import { DrunkState } from '../intro/drunk'
-import { GearRack, TABLE_POSITION, type GearPiece } from '../intro/GearRack'
+import { GEAR_Z, GearRack, TABLE_POSITION, type GearPiece } from '../intro/GearRack'
 import { Shotgun } from '../intro/Shotgun'
 import { AboveWater } from '../world/above/Coast'
 import { CREW_BOARD_SPOT, CrewBoard } from '../intro/CrewBoard'
@@ -19,15 +19,19 @@ import type { BotWorld } from '../bots/world'
 import type { CharacterClass } from '../systems/crew'
 import { CLASS_NAMES } from '../systems/crew'
 import { saveSettings } from '../core/settings'
-import { BOW_Z, CABIN_FRONT_Z, DECK_Y, Galleon, STERN_Z, halfWidthAt } from '../world/ship/Galleon'
-import { NET_OBSTACLES, Rigging } from '../intro/Rigging'
+import { CABIN_FRONT_Z, DECK_Y, Galleon, STERN_Z } from '../world/ship/Galleon'
+import { NET_OBSTACLES, Rigging, netObstacles, type RigSpec } from '../intro/Rigging'
+import { NestRope } from '../intro/NestRope'
 import { DeckCannons, MATCH_CRATE } from '../intro/DeckCannons'
 import { PERCH_SPOT, Quarterdeck, STAIRS } from '../intro/Quarterdeck'
 import { Sailing, type SailState } from '../intro/Sailing'
 import { CrackerPack, Parrot, type PollyState } from '../intro/Parrot'
 import { Swords, type SwordTarget } from '../intro/Swords'
-import { Zipline } from '../intro/Zipline'
+import { LooseItem } from '../interaction/LooseItem'
+import { makeItem } from '../systems/items'
+import { DECK_ROUTE, POLLY_ROUTE, Zipline } from '../intro/Zipline'
 import { Level1Stage } from './Level1Stage'
+import { deckHalfWidth, DECK_BOW_Z, FOREMAST_Z, STRETCH } from '../intro/deck'
 
 /** The "harmless merchant" anchored in the bay, ~150 m off the starboard bow. */
 const ENEMY_POSITION = new THREE.Vector3(110, 0, -100)
@@ -45,17 +49,25 @@ interface Obstacle {
 }
 
 /** Deck obstacles (ship-local circles): masts, table, gear rack, thrower, beer table, dart rack. */
+/** The foremast's net, down its forward side (the foremast is 13 m tall). */
+const FORE_RIG: RigSpec = { mastZ: FOREMAST_Z, height: 13, side: -1 }
+
+/** The blunderbuss rack: free-standing near the bow, by the clay thrower (ship-local, deck level). */
+const GUN_RACK = new THREE.Vector3(1.4, DECK_Y, CLAY_Z + 4)
+
 const OBSTACLES: Obstacle[] = [
   { x: 0, z: 0, r: 0.45 },
-  { x: 0, z: -8, r: 0.45 },
+  { x: 0, z: FOREMAST_Z, r: 0.45 },
   { x: TABLE_POSITION.x, z: TABLE_POSITION.z, r: 0.75 },
-  { x: -(halfWidthAt(1.6) - 0.45), z: 1.6, r: 0.5 },
-  { x: halfWidthAt(6.2) - 0.5, z: 6.2, r: 0.45 },
+  { x: -(deckHalfWidth(GEAR_Z) - 0.45), z: GEAR_Z, r: 0.5 },
+  { x: deckHalfWidth(CLAY_Z) - 0.5, z: CLAY_Z, r: 0.45 },
+  { x: GUN_RACK.x, z: GUN_RACK.z, r: 0.6 },
   { x: BARREL_POSITION.x, z: BARREL_POSITION.z, r: 0.6 },
   { x: -2.35, z: BOARD_POSITION.z - THROW_DISTANCE - 0.1, r: 0.15 },
   { x: CREW_BOARD_SPOT.x, z: CREW_BOARD_SPOT.z, r: 0.35 },
   { x: MATCH_CRATE.x, z: MATCH_CRATE.z, r: 0.35 },
   ...NET_OBSTACLES,
+  ...netObstacles(FORE_RIG),
   // The high end of the stairs, from the side (you can't walk in under them).
   { x: (STAIRS.x0 + STAIRS.x1) / 2, z: STAIRS.zTop - 1.3, r: 0.4 },
   { x: (STAIRS.x0 + STAIRS.x1) / 2, z: STAIRS.zTop - 0.5, r: 0.4 },
@@ -67,16 +79,19 @@ const OBSTACLES: Obstacle[] = [
 export class IntroStage implements Stage {
   readonly id = 'intro'
   readonly root = new THREE.Group()
-  private readonly ship = new Galleon({ flag: 'crew' })
+  private readonly ship = new Galleon({ flag: 'crew', stretch: STRETCH })
   private readonly enemy = new Galleon({ hullColor: 0x2e2620, sailColor: 0xcfc6b2, flag: 'merchant' })
   private readonly smoke = new Particles({ max: 500, gravity: 0.3, drag: 0.6 })
   private readonly fire = new Particles({ max: 400, gravity: 1.5, drag: 1, blending: THREE.AdditiveBlending })
   private readonly debris = new Particles({ max: 400, gravity: -9.8, drag: 0.3 })
   private readonly splash = new Particles({ max: 400, gravity: -9.8, drag: 0.4 })
   // The rigging net is a handhold: grip it to climb.
-  private readonly grab = new GrabSystem({ rocks: [], climb: (p) => this.rigging?.onNet(p, 0.12) ?? false })
+  private readonly grab = new GrabSystem({ rocks: [], climb: (p) => (this.rigs?.some((r) => r.onNet(p, 0.12)) ?? false) || (this.nestRope?.near(p, 0.1) ?? false) })
+  /** The main mast's net and nest (aft of it); `rigs` also has the foremast's (forward of it). */
   private rigging!: Rigging
-  private zipline!: Zipline
+  private rigs!: Rigging[]
+  private nestRope!: NestRope
+  private ziplines!: Zipline[]
   private cannons!: DeckCannons
   /** The prompt the rigging put up (so we only clear our own). */
   private riggingPrompt = ''
@@ -92,6 +107,7 @@ export class IntroStage implements Stage {
   private range!: ClayRange
   private crew!: Crew
   private swords!: Swords
+  private swivelKey!: LooseItem
   /** Which hand (0 left, 1 right) each crewmate holds their sword in, by sword id. */
   private readonly swordHands = new Map<string, 0 | 1>()
   private gear!: GearRack
@@ -157,19 +173,27 @@ export class IntroStage implements Stage {
       this.pull(count)
     }
     this.rigging = new Rigging(this.ship)
-    this.zipline = new Zipline(this.ship, game.rig, game.player, game.audio)
-    this.grab.add(this.zipline)
+    const foreRig = new Rigging(this.ship, FORE_RIG)
+    this.rigs = [this.rigging, foreRig]
+    // A rope from nest to nest, high over the deck.
+    this.nestRope = new NestRope(
+      this.ship,
+      new THREE.Vector3(0, this.rigging.nestFloorY + 1.15, -0.95),
+      new THREE.Vector3(0, foreRig.nestFloorY + 1.15, FOREMAST_Z + 0.8),
+    )
+    this.ziplines = [DECK_ROUTE, POLLY_ROUTE].map((route) => this.grab.add(new Zipline(this.ship, game.rig, game.player, game.audio, route)))
     this.cannons = new DeckCannons(this.root, this.ship, this.grab, {
       audio: game.audio,
       smoke: this.smoke,
       fire: this.fire,
       splash: this.splash,
       debris: this.debris,
-      hitTest: (a, b) => this.cannonHit(a, b),
+      hitTest: (a, b, swivel) => this.cannonHit(a, b, swivel),
       onFire: (i) => game.net?.send('cannon', { i }),
       // Aim for the middle of her hull.
       swivelTarget: () => this.enemy.group.localToWorld(new THREE.Vector3(0, 1.4, 0)),
     })
+    this.buildSwivelKey()
     this.crew = new Crew(this.ship, this.root)
     this.swords = new Swords(this.ship.shake, this.root, {
       audio: game.audio,
@@ -229,7 +253,7 @@ export class IntroStage implements Stage {
     game.wrist.setVisible(false)
     game.vignette.setMask(false)
     game.hud.say('Welcome aboard! Golden hour off the Sicilian coast. Enjoy the calm.', 5, 'Salvo')
-    game.hud.setPrompt('Walk: left stick · Turn: right stick · Grab: grip. Pick up a blunderbuss from the rack by the cabin.')
+    game.hud.setPrompt('Walk: left stick · Turn: right stick · Grab: grip. Pick up a blunderbuss from the rack up at the bow, by the clay thrower.')
   }
 
   guide(): ButtonGuide {
@@ -266,7 +290,7 @@ export class IntroStage implements Stage {
     this.syncNet(dt)
     this.swords.update(dt, game.halfHeight)
     this.swords.face(game.camera)
-    this.zipline.face(game.camera)
+    for (const z of this.ziplines) z.face(game.camera)
     if (this.phase === 'fakeout') this.updateFakeout(dt)
     else if (this.phase === 'attack') this.updateAttack(dt, elapsed)
 
@@ -299,9 +323,10 @@ export class IntroStage implements Stage {
     this.root.attach(this.enemy.group)
     this.aimEnemyAtUs()
     // Anyone up the rigging is back on deck: the mast is about to take hits.
-    const sliding = this.zipline.riding
-    this.zipline.forceRelease()
-    if (sliding || game.player.climbing || this.rigging.inNest(game.camera.getWorldPosition(this.v))) {
+    const sliding = this.ziplines.some((z) => z.riding)
+    for (const z of this.ziplines) z.forceRelease()
+    const head = game.camera.getWorldPosition(this.v)
+    if (sliding || game.player.climbing || this.rigs.some((r) => r.inNest(head))) {
       game.player.placeFeet(this.rigging.footOfNet(this.v))
       game.player.noJump = false
     }
@@ -357,8 +382,8 @@ export class IntroStage implements Stage {
         if (this.phase !== 'attack' || !railsOpen(this.attack!.t, this.gear.complete)) return null
         const local = this.ship.group.worldToLocal(from.clone())
         const side = Math.sign(local.x) || 1
-        const z = THREE.MathUtils.clamp(local.z, BOW_Z + 3, CABIN_FRONT_Z - 1)
-        return this.ship.group.localToWorld(new THREE.Vector3(side * (halfWidthAt(z) + 2.5), DECK_Y, z))
+        const z = THREE.MathUtils.clamp(local.z, DECK_BOW_Z + 3, CABIN_FRONT_Z - 1)
+        return this.ship.group.localToWorld(new THREE.Vector3(side * (deckHalfWidth(z) + 2.5), DECK_Y, z))
       },
     }
     return this.botWorld
@@ -386,9 +411,15 @@ export class IntroStage implements Stage {
     // The clay switches are shared: flipping one flips it for everybody.
     const switches = { 'intro/clayCount': this.range.countSwitch, 'intro/clayAuto': this.range.autoSwitch }
     for (const [key, sw] of Object.entries(switches)) sw.onFlip = (index) => net.send('prop', { key, v: [index] })
-    on<{ key: string; v: number[] }>('prop', (msg) => {
+    on<{ key: string; v: number[]; by?: string }>('prop', (msg) => {
       const sw = switches[msg.key as keyof typeof switches]
       if (sw) sw.show(msg.v[0] === 1 ? 1 : 0)
+      // Someone unlocked the swivel gun (or had, before we joined).
+      if (msg.key === 'intro/swivelUnlocked' && this.cannons.swivel.locked) {
+        this.cannons.swivel.unlock(!msg.by)
+        this.swivelKey.enabled = false
+        this.swivelKey.object.visible = false
+      }
     })
     net.send('props', { prefix: 'intro/' })
     on<{ id: string; hand: number }>('swordHand', (msg) => this.swordHands.set(msg.id, msg.hand === 0 ? 0 : 1))
@@ -585,16 +616,15 @@ export class IntroStage implements Stage {
       this.splash.emit({ position: this.v.copy(origin).addScaledVector(dir, t), velocity: new THREE.Vector3(0, 1.5, 0), spread: 0.5, color: 0xeaf6ff, size: 0.08, life: 0.5, count: 5 })
     }
 
-    if (this.phase !== 'fakeout') return
-    // Any pellet on the "merchant" (hull, sails, flag) starts the attack.
+    // Pellets on the "merchant" just knock off a few splinters: only the quarterdeck's swivel gun
+    // (and that's locked) starts the fight.
     this.enemy.group.updateMatrixWorld(true)
     for (const dir of directions) {
       this.raycaster.set(origin, dir)
       this.raycaster.far = 400
-      if (this.raycaster.intersectObjects(this.enemy.hitMeshes, false).length > 0) {
-        // In a crew the server decides who was first; the attack starts when it says so.
-        if (game.net) game.net.send('hitShip')
-        else this.startAttack('You')
+      const hit = this.raycaster.intersectObjects(this.enemy.hitMeshes, false)[0]
+      if (hit) {
+        this.debris.emit({ position: hit.point, spread: 1, color: 0x5b3a21, size: 0.08, life: 1, count: 3 })
         return
       }
     }
@@ -663,8 +693,8 @@ export class IntroStage implements Stage {
 
   // ---- Cannons and rigging ------------------------------------------------------------------------
 
-  /** A cannonball from `a` to `b`: did it hit the ship in the bay? Hitting her starts the attack. */
-  private cannonHit(a: THREE.Vector3, b: THREE.Vector3): THREE.Vector3 | null {
+  /** A cannonball from `a` to `b`: did it hit the ship in the bay? Only the swivel gun's starts the attack. */
+  private cannonHit(a: THREE.Vector3, b: THREE.Vector3, swivel: boolean): THREE.Vector3 | null {
     const length = a.distanceTo(b)
     if (length < 1e-4) return null
     this.enemy.group.updateMatrixWorld(true)
@@ -672,14 +702,57 @@ export class IntroStage implements Stage {
     this.raycaster.far = length
     const hit = this.raycaster.intersectObjects(this.enemy.hitMeshes, false)[0]
     if (!hit) return null
-    if (this.phase === 'fakeout') {
+    if (this.phase === 'fakeout' && swivel) {
       if (this.game.net) this.game.net.send('hitShip')
       else this.startAttack('You')
     }
     return hit.point.clone()
   }
 
-  /** Climbing into and out of the crow's nest, with A/X (R on the keyboard). */
+  /**
+   * The swivel gun's key: hung on a nail on the cabin wall, tucked in under the high end of the
+   * quarterdeck stairs. Carry it up and touch it to the padlock to open it.
+   */
+  private buildSwivelKey(): void {
+    const { game } = this
+    const key = makeItem('key')
+    key.scale.setScalar(1.3)
+    key.position.set((STAIRS.x0 + STAIRS.x1) / 2, DECK_Y + 0.55, CABIN_FRONT_Z - 0.07)
+    key.rotation.set(0, 0, Math.PI / 2)
+    const nail = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.06, 6).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2b2d30, metalness: 0.6, roughness: 0.5 }))
+    nail.position.copy(key.position).add(new THREE.Vector3(0, 0.06, 0.02))
+    this.ship.shake.add(key, nail)
+    this.cannons.swivel.onNag = () => game.hud.now('It\'s padlocked shut. The key must be put away somewhere on the ship...', 3)
+    this.swivelKey = this.grab.add(
+      new LooseItem(key, {
+        radius: 0.1,
+        settle: 'home',
+        onGrab: () => {
+          game.hud.now('An old iron key, hidden under the stairs. What could it open?', 3)
+          return false
+        },
+        whileHeld: (hand) => {
+          if (!this.cannons.swivel.locked || key.getWorldPosition(this.v).distanceTo(this.cannons.swivel.lockPoint) > 0.22) return
+          this.grab.drop(hand)
+          this.swivelKey.enabled = false
+          key.visible = false
+          this.cannons.swivel.unlock()
+          hand.pulse(0.7, 100)
+          game.audio.play('click', this.cannons.swivel.lockPoint, 1)
+          game.hud.now('Click! The padlock falls away from the swivel gun...', 3)
+          game.net?.send('prop', { key: 'intro/swivelUnlocked', v: [1] })
+        },
+      }),
+    )
+  }
+
+  /** The net nearest a point (by distance to its mast). */
+  private nearestRig(p: THREE.Vector3): Rigging {
+    const local = this.ship.shake.worldToLocal(p.clone())
+    return this.rigs.reduce((best, r) => (Math.abs(local.z - r.spec.mastZ) < Math.abs(local.z - best.spec.mastZ) ? r : best))
+  }
+
+  /** Climbing into and out of the crow's nests, with A/X (R on the keyboard). */
   private updateRigging(): void {
     const { game } = this
     const player = game.player
@@ -688,8 +761,11 @@ export class IntroStage implements Stage {
       return
     }
     const head = game.camera.getWorldPosition(this.v)
-    const inNest = this.rigging.inNest(head)
-    const atTop = !inNest && player.climbing && this.rigging.nearTop(head)
+    // Whichever nest you're in, or at the top of the net to, or hanging off the rope beside.
+    const onRope = player.climbing && this.nestRope.near(head, 1.4)
+    const rig = this.rigs.find((r) => r.inNest(head)) ?? this.rigs.find((r) => player.climbing && (r.nearTop(head) || (onRope && r.besideNest(head)))) ?? this.rigging
+    const inNest = rig.inNest(head)
+    const atTop = !inNest && player.climbing && (rig.nearTop(head) || (onRope && rig.besideNest(head)))
     player.noJump = inNest || atTop
     const key = game.inXr ? 'A/X' : 'R'
     const prompt = atTop ? `${key}: climb into the crow's nest` : inNest ? `${key}: climb back out onto the net` : ''
@@ -700,14 +776,14 @@ export class IntroStage implements Stage {
     const pressed = game.hands.some((h) => h.connected && h.primaryPressed && !h.held)
     if (!pressed) return
     if (atTop) {
-      player.placeFeet(this.rigging.nestSpot(this.v2))
+      player.placeFeet(rig.nestSpot(this.v2))
       game.audio.play('thud', this.v2, 0.4)
       if (!this.sawTheView) {
         this.sawTheView = true
         game.hud.say('What a view! You can see the whole bay from up here.', 4)
       }
     } else if (inNest) {
-      player.placeHead(this.rigging.netTopHang(this.v2))
+      player.placeHead(rig.netTopHang(this.v2))
     }
   }
 
@@ -865,7 +941,7 @@ export class IntroStage implements Stage {
 
   private buildGunRack(): void {
     const rack = new THREE.Group()
-    rack.position.set(2.0, DECK_Y, CABIN_FRONT_Z - 0.18)
+    rack.position.copy(GUN_RACK)
     const wood = new THREE.MeshStandardMaterial({ color: 0x4a2f1b, roughness: 0.85 })
     const beam = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.08, 0.14), wood)
     beam.position.y = 1.3
@@ -901,18 +977,21 @@ export class IntroStage implements Stage {
     return {
       kind: 'walk',
       waterY: 0,
-      climbable: (p, reach) => this.rigging.onNet(p, reach),
-      climbUp: (target) => this.rigging.upTheNet(target),
-      climbHold: (head, target) => this.rigging.holdOffset(head, target),
+      // Hanging on a net, or dangling from the rope between the nests.
+      climbable: (p, reach) => this.rigs.some((r) => r.onNet(p, reach)) || this.nestRope.near(p, reach + 0.6),
+      climbUp: (target) => this.nearestRig(this.game.camera.getWorldPosition(new THREE.Vector3())).upTheNet(target),
+      climbHold: (head, target) => (this.nestRope.near(head, 1.4) && !this.rigs.some((r) => r.onNet(head, 0.8)) ? target.set(0, 0, 0) : this.nearestRig(head).holdOffset(head, target)),
       groundHeight: (x, z, below) => {
         if (below !== undefined) {
-          const nest = this.rigging?.nestFloorAt(x, z, below) ?? null
-          if (nest !== null) return nest
+          for (const r of this.rigs ?? []) {
+            const nest = r.nestFloorAt(x, z, below)
+            if (nest !== null) return nest
+          }
         }
         const upper = this.quarterdeck?.groundAt(x, z, below) ?? null
         if (upper !== null) return upper
         const p = toLocal(x, z)
-        if (p.z > STERN_Z || p.z < BOW_Z || Math.abs(p.x) > halfWidthAt(p.z)) return null
+        if (p.z > STERN_Z || p.z < DECK_BOW_Z || Math.abs(p.x) > deckHalfWidth(p.z)) return null
         return ship.localToWorld(p.setY(DECK_Y)).y
       },
       constrain: (head, feetY) => {
@@ -927,9 +1006,10 @@ export class IntroStage implements Stage {
             return
           }
         }
-        if (this.rigging?.inNest(head)) {
+        const nestRig = this.rigs?.find((r) => r.inNest(head))
+        if (nestRig) {
           const q = ship.worldToLocal(local.copy(head))
-          this.rigging.constrainInNest(q)
+          nestRig.constrainInNest(q)
           const world = ship.localToWorld(q)
           head.x = world.x
           head.z = world.z
@@ -940,10 +1020,10 @@ export class IntroStage implements Stage {
         const cabinFront = CABIN_FRONT_Z - RAIL_MARGIN
         if (open) {
           // Over the side is allowed, but not through the cabin wall.
-          if (p.z > cabinFront && Math.abs(p.x) < halfWidthAt(STERN_Z)) p.z = cabinFront
+          if (p.z > cabinFront && Math.abs(p.x) < deckHalfWidth(STERN_Z)) p.z = cabinFront
         } else {
-          p.z = THREE.MathUtils.clamp(p.z, BOW_Z + 2.2, cabinFront)
-          const half = halfWidthAt(p.z) - RAIL_MARGIN
+          p.z = THREE.MathUtils.clamp(p.z, DECK_BOW_Z + 2.2, cabinFront)
+          const half = deckHalfWidth(p.z) - RAIL_MARGIN
           p.x = THREE.MathUtils.clamp(p.x, -half, half)
         }
         for (const o of OBSTACLES) {

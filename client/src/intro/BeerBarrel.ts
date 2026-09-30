@@ -5,7 +5,8 @@ import type { Hand } from '../input/Hand'
 import type { GrabSystem, Interactable } from '../interaction/GrabSystem'
 import { LooseItem } from '../interaction/LooseItem'
 import { Label, type LabelLine } from '../ui/Label'
-import { DECK_Y, halfWidthAt, type Galleon } from '../world/ship/Galleon'
+import { DECK_Y, type Galleon } from '../world/ship/Galleon'
+import { deckHalfWidth } from './deck'
 
 /** Seconds to fill a mug at full trigger. */
 const FILL_SECONDS = 2.2
@@ -16,7 +17,7 @@ const MOUTH_DISTANCE = 0.15
 const HIGHLIGHT = new THREE.Color(0x2e7896)
 const BLACK = new THREE.Color(0x000000)
 
-export const BARREL_POSITION = new THREE.Vector3(-(halfWidthAt(8.3) - 0.6), DECK_Y, 8.3)
+export const BARREL_POSITION = new THREE.Vector3(-(deckHalfWidth(8.3) - 0.6), DECK_Y, 8.3)
 /** The table the barrel sits on (station-local: width along the ship, depth across it). */
 const TABLE = { width: 1.0, depth: 0.6, height: 0.78 }
 

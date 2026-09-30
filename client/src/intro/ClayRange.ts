@@ -4,7 +4,11 @@ import type { Particles } from '../fx/Particles'
 import type { Hand } from '../input/Hand'
 import type { Interactable } from '../interaction/GrabSystem'
 import { Label } from '../ui/Label'
-import { DECK_Y, halfWidthAt, type Galleon } from '../world/ship/Galleon'
+import { DECK_Y, type Galleon } from '../world/ship/Galleon'
+import { FOREMAST_Z, deckHalfWidth } from './deck'
+
+/** The thrower stands on the starboard rail near the bow, with its gun rack beside it (ship-local z). */
+export const CLAY_Z = -30
 
 const GRAVITY = 9.8
 /** Seconds between the two clays of a pair: near enough together to be a double. */
@@ -79,8 +83,8 @@ export class ClayRange {
     private readonly fx: ClayFx,
   ) {
     // Thrower on the starboard rail, aimed out over the water.
-    const z = 6.2
-    this.thrower.position.set(halfWidthAt(z) - 0.5, DECK_Y, z)
+    const z = CLAY_Z
+    this.thrower.position.set(deckHalfWidth(z) - 0.5, DECK_Y, z)
     const iron = new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.5, metalness: 0.6 })
     const wood = new THREE.MeshStandardMaterial({ color: 0x6b4527, roughness: 0.8 })
     const base = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.6), wood)
@@ -138,7 +142,9 @@ export class ClayRange {
       new THREE.MeshStandardMaterial({ map: this.boardTexture, roughness: 0.9 }),
       wood,
     ])
-    this.board.position.set(0, DECK_Y + 2.7, 0.3)
+    // On the foremast, facing forward over the shooting stand at the bow.
+    this.board.position.set(0, DECK_Y + 2.7, FOREMAST_Z - 0.3)
+    this.board.rotation.y = Math.PI
     ship.shake.add(this.board)
     this.drawBoard()
   }

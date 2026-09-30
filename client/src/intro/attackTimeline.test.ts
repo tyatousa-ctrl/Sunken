@@ -1,12 +1,16 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { ATTACK_SECONDS, formatClock, planVolleys, railsOpen, secondsLeft, sinkProgress, turnProgress, MAX_TILT_DEG } from './attackTimeline'
+import { ATTACK_SECONDS, TURN_SECONDS, TURN_START, formatClock, planVolleys, railsOpen, secondsLeft, sinkProgress, turnProgress, MAX_TILT_DEG } from './attackTimeline'
 
 describe('attack timeline', () => {
   it('opens with a shot at the scoreboard, then brings down the foremast', () => {
     const shots = planVolleys()
     assert.equal(shots[0].target, 'scoreboard')
     assert.ok(shots.some((s) => s.target === 'foremast'))
+  })
+
+  it('holds fire until she has turned to face us', () => {
+    assert.ok(planVolleys()[0].fireAt >= TURN_START + TURN_SECONDS)
   })
 
   it('is the same on every client', () => {

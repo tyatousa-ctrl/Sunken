@@ -213,6 +213,19 @@ Riddle: *"When noon's light swims through the door, blue shows the way the old o
 
 **Checked:** a full walkthrough in the emulator (the arch, tunnel, surfacing, the walls holding, climbing out, turning all three shells, the carving, the map piece, stepping off, the heave, out through the passage, the summary). Still to tune: the rippling light on the cave walls is too strong and even (a toned-down version is ready).
 
+## The longer ship, the locked swivel gun, and the rigging
+
+- **Only the swivel gun starts the fight.** Shooting the ship in the bay with a blunderbuss (or hitting her with a deck cannon) now just knocks off a few splinters; the attack starts only when the quarterdeck's swivel gun hits her.
+- **She fights back instead of blowing up.** A hit on her is a puff of splinters and a thump (it used to be a big burst of wreckage and a boom). She runs up the pirate flag, swings round broadside to face us, and only then opens fire (her first shot is now about 7 s in, once she's turned).
+- **The swivel gun is locked.** A red sign over it says **⚠ DON'T LIGHT THIS! ⚠** ("Captain's orders... padlocked, and the key put well out of the way"). An iron hasp and padlock cover its touch hole: a lit match held there only gets "It's padlocked shut. The key must be put away somewhere on the ship...". The **key** hangs on a nail on the cabin's front wall, tucked in under the high end of the quarterdeck stairs. Carry it up and touch it to the padlock: click, and the padlock falls off. In a crew the unlock is shared (and remembered for anyone joining later).
+- **Twice as long.** The crew's ship now has 27.5 m more deck amidships (55 m stern to bow; the wrecks in the dive levels keep their old size), with four more cannons along the new waist and the foremast moved to 20 m forward of the main mast. The activities are spread along her: the clay thrower, with the blunderbuss rack beside it and the scoreboard on the foremast facing it, is up at the bow; the cutlasses are on the forward waist; the scuba rack and the crew board are forward of the main mast; the beer, darts, map table and quarterdeck stay aft. The enemy's shots are spread along the whole deck.
+- **The foremast's crow's nest** can be climbed into too: it has its own net, down its forward side to the deck (climb it like the main one; A/X at the top to climb in or out).
+- **A rope between the two nests**, high over the deck: grip it and pull yourself along hand over hand, dangling over nothing (let go and you hang where you are). At either end, A/X climbs into that nest.
+- **A second zipline** runs from the main nest aft to the quarterdeck, landing by Polly (a gentler run than the one to the main deck). Each zipline's sign in the nest says where it goes.
+- The quarterdeck's stairs, railings, table and perch are merged into a few meshes (about 80 fewer draw calls).
+
+**Checked:** in the emulator: a blunderbuss hit and a deck cannon hit don't start the attack; the locked swivel refuses a match with the padlock message; the key under the stairs opens the padlock; the unlocked swivel starts the attack and the enemy holds fire while she turns; the rope from nest to nest hand over hand, climbing into the foremast's nest from it, and climbing out onto its net; the zipline to Polly lands on the quarterdeck; the earlier deck tests (gear lock, swords, hot sauce, AUTO clays, level hop) still pass.
+
 ## Playtest fixes: dials, starfish, turtle, shells
 
 - **Level 2 dials line up.** The carved marks were drawn on the dial's round face turned a quarter turn, so the mark under the gold notch wasn't the one the dial had settled on. The marks now sit on their own flat face, upright, so the mark at the top is always the one chosen. A dial showing its right mark of the code **glows golden yellow**.

@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { BOW_Z, CABIN_FRONT_Z, DECK_Y, halfWidthAt, type Galleon } from '../world/ship/Galleon'
+import { CABIN_FRONT_Z, DECK_Y, type Galleon } from '../world/ship/Galleon'
+import { deckHalfWidth, DECK_BOW_Z } from './deck'
 
 interface CrewSpec {
   name: string
@@ -69,8 +70,8 @@ class Sailor {
     this.retarget -= dt
     if (this.retarget <= 0 || this.group.position.distanceTo(this.target) < 0.3) {
       this.retarget = 2 + Math.random() * 2
-      const z = BOW_Z + 3 + Math.random() * (CABIN_FRONT_Z - BOW_Z - 4)
-      const half = halfWidthAt(z) - 0.8
+      const z = DECK_BOW_Z + 3 + Math.random() * (CABIN_FRONT_Z - DECK_BOW_Z - 4)
+      const half = deckHalfWidth(z) - 0.8
       this.target.set((Math.random() * 2 - 1) * half, DECK_Y, z)
     }
     const step = this.target.clone().sub(this.group.position)

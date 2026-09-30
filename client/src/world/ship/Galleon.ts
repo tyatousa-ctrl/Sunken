@@ -9,6 +9,8 @@ export interface GalleonOptions {
   flag?: FlagKind
   /** Build the captain's cabin as a room you can swim into (the wreck), not a solid block. */
   hollowCabin?: boolean
+  /** Metres of extra deck added amidships (the crew's own ship is twice as long as a wreck). */
+  stretch?: number
 }
 
 /** Deck outline (x, z) in ship-local metres, starboard side, stern → bow. Mirrored for port. */
@@ -77,12 +79,29 @@ export function wreckColliders(): ShipBox[] {
 }
 
 
-/** Half the deck width at ship-local z. */
-export function halfWidthAt(z: number): number {
-  if (z >= STARBOARD[0][1]) return STARBOARD[0][0]
-  for (let i = 0; i < STARBOARD.length - 1; i++) {
-    const [x0, z0] = STARBOARD[i]
-    const [x1, z1] = STARBOARD[i + 1]
+/** The deck outline for a ship with `stretch` metres of straight waist added amidships. */
+function profileFor(stretch: number): [number, number][] {
+  if (stretch <= 0) return STARBOARD
+  return [[3.6, 13], [3.8, 4], [3.8, 4 - stretch], ...STARBOARD.slice(2).map(([x, z]): [number, number] => [x, z - stretch])]
+}
+
+/** Where the bow is, for a ship stretched by `stretch`. */
+export function bowZ(stretch = 0): number {
+  return BOW_Z - stretch
+}
+
+/** Where the foremast stands (ship-local z), for a ship stretched by `stretch`. */
+export function foremastZ(stretch = 0): number {
+  return stretch > 0 ? -20 : -8
+}
+
+/** Half the deck width at ship-local z (for a ship stretched by `stretch`). */
+export function halfWidthAt(z: number, stretch = 0): number {
+  const outline = profileFor(stretch)
+  if (z >= outline[0][1]) return outline[0][0]
+  for (let i = 0; i < outline.length - 1; i++) {
+    const [x0, z0] = outline[i]
+    const [x1, z1] = outline[i + 1]
     if (z <= z0 && z >= z1) return x0 + ((z - z0) / (z1 - z0)) * (x1 - x0)
   }
   return 0
@@ -106,8 +125,13 @@ export class Galleon {
   private readonly flag: THREE.Mesh
   private readonly flagTextures = new Map<FlagKind, THREE.Texture>()
 
+  /** Extra waist length (see GalleonOptions.stretch). */
+  readonly stretch: number
+
   constructor(options: GalleonOptions = {}) {
     this.group.add(this.shake)
+    const stretch = (this.stretch = options.stretch ?? 0)
+    const outline = outlinePoints(stretch)
     const wood = new THREE.MeshStandardMaterial({ color: options.hullColor ?? 0x5b3a21, roughness: 0.85, side: THREE.DoubleSide })
     const darkWood = new THREE.MeshStandardMaterial({ color: 0x3b2413, roughness: 0.9 })
     const trim = new THREE.MeshStandardMaterial({ color: 0xc9a13b, roughness: 0.6, metalness: 0.2 })
@@ -116,24 +140,25 @@ export class Galleon {
 
     // Hull, deck, rails, cabin and cannons never move relative to the ship: merged into a few meshes.
     const structure = new THREE.Group()
-    const hull = new THREE.Mesh(makeHullGeometry(), wood)
-    const wale = new THREE.Mesh(makeWaleGeometry(), trim)
-    const deck = new THREE.Mesh(makeDeckGeometry(), new THREE.MeshStandardMaterial({ map: makePlankTexture(), roughness: 0.9 }))
-    structure.add(hull, wale, deck, makeRails(darkWood), options.hollowCabin ? makeHollowCabin(wood, darkWood, trim) : makeCabin(wood, darkWood, trim))
+    const hull = new THREE.Mesh(makeHullGeometry(outline), wood)
+    const wale = new THREE.Mesh(makeWaleGeometry(outline), trim)
+    const deck = new THREE.Mesh(makeDeckGeometry(outline), new THREE.MeshStandardMaterial({ map: makePlankTexture(), roughness: 0.9 }))
+    structure.add(hull, wale, deck, makeRails(darkWood, outline), options.hollowCabin ? makeHollowCabin(wood, darkWood, trim) : makeCabin(wood, darkWood, trim))
     this.shake.add(structure)
 
     this.buildMast(this.mainmast, 0, 16, 5.5, darkWood, sail)
-    this.buildMast(this.foremast, -8, 13, 4.5, darkWood, sail)
+    this.buildMast(this.foremast, foremastZ(stretch), 13, 4.5, darkWood, sail)
     this.shake.add(this.mainmast, this.foremast)
 
-    for (const z of [-4, 2, 6.5]) {
+    // A stretched ship carries more guns along her longer waist.
+    for (const z of stretch > 0 ? [-4, 2, 6.5, -12, -28] : [-4, 2, 6.5]) {
       for (const side of [1, -1]) {
         const cannon = makeCannon(iron, darkWood)
-        const x = side * (halfWidthAt(z) - 0.55)
+        const x = side * (halfWidthAt(z, stretch) - 0.55)
         cannon.position.set(x, DECK_Y, z)
         cannon.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2
         structure.add(cannon)
-        const muzzle = new THREE.Vector3(side * (halfWidthAt(z) + 0.6), DECK_Y + 0.55, z)
+        const muzzle = new THREE.Vector3(side * (halfWidthAt(z, stretch) + 0.6), DECK_Y + 0.55, z)
         ;(side > 0 ? this.starboardGuns : this.portGuns).push(muzzle)
         // The barrel's breech end is 0.4 m inboard of the carriage centre; the touch hole sits on top.
         this.cannons.push({ touchHole: new THREE.Vector3(x - side * 0.3, DECK_Y + 0.69, z), muzzle: muzzle.clone(), side: side as 1 | -1 })
@@ -216,16 +241,17 @@ export class Galleon {
   }
 }
 
-function outlinePoints(): THREE.Vector2[] {
-  const starboard = STARBOARD.map(([x, z]) => new THREE.Vector2(x, z))
-  const port = STARBOARD.slice(0, -1)
+function outlinePoints(stretch = 0): THREE.Vector2[] {
+  const profile = profileFor(stretch)
+  const starboard = profile.map(([x, z]) => new THREE.Vector2(x, z))
+  const port = profile.slice(0, -1)
     .reverse()
     .map(([x, z]) => new THREE.Vector2(-x, z))
   return [...starboard, ...port]
 }
 
-function makeHullGeometry(): THREE.BufferGeometry {
-  const shape = new THREE.Shape(outlinePoints())
+function makeHullGeometry(outline: THREE.Vector2[]): THREE.BufferGeometry {
+  const shape = new THREE.Shape(outline)
   const geometry = new THREE.ExtrudeGeometry(shape, { depth: HULL_DEPTH, steps: 4, bevelEnabled: false, curveSegments: 1 })
   // Shape (x, z) → extruded downward from the deck.
   geometry.rotateX(Math.PI / 2)
@@ -265,17 +291,17 @@ function withoutTopCap(geometry: THREE.BufferGeometry, y: number): THREE.BufferG
   return out
 }
 
-function makeWaleGeometry(): THREE.BufferGeometry {
-  const shape = new THREE.Shape(outlinePoints().map((p) => new THREE.Vector2(p.x * 1.03, p.y * 1.01)))
+function makeWaleGeometry(outline: THREE.Vector2[]): THREE.BufferGeometry {
+  const shape = new THREE.Shape(outline.map((p) => new THREE.Vector2(p.x * 1.03, p.y * 1.01)))
   const geometry = new THREE.ExtrudeGeometry(shape, { depth: 0.22, bevelEnabled: false })
   geometry.rotateX(Math.PI / 2)
   geometry.translate(0, DECK_Y - 0.5, 0)
   return geometry
 }
 
-function makeDeckGeometry(): THREE.BufferGeometry {
+function makeDeckGeometry(outline: THREE.Vector2[]): THREE.BufferGeometry {
   // Mirror z so that rotating by -90° puts the shape flat with its face up.
-  const shape = new THREE.Shape(outlinePoints().map((p) => new THREE.Vector2(p.x * 0.98, -p.y * 0.99)))
+  const shape = new THREE.Shape(outline.map((p) => new THREE.Vector2(p.x * 0.98, -p.y * 0.99)))
   const geometry = new THREE.ShapeGeometry(shape)
   geometry.rotateX(-Math.PI / 2)
   geometry.translate(0, DECK_Y, 0)
@@ -286,9 +312,8 @@ function makeDeckGeometry(): THREE.BufferGeometry {
   return geometry
 }
 
-function makeRails(material: THREE.Material): THREE.Group {
+function makeRails(material: THREE.Material, points: THREE.Vector2[]): THREE.Group {
   const rails = new THREE.Group()
-  const points = outlinePoints()
   const post = new THREE.CylinderGeometry(0.05, 0.05, RAIL_HEIGHT, 6)
   for (let i = 0; i < points.length; i++) {
     const a = points[i]

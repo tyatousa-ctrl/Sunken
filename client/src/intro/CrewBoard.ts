@@ -3,10 +3,11 @@ import type { AudioSystem } from '../audio/AudioSystem'
 import type { Hand } from '../input/Hand'
 import { CLASSES, CLASS_NAMES, type CharacterClass, type CrewMember } from '../systems/crew'
 import { SKILLS } from '../systems/skills'
-import { DECK_Y, halfWidthAt, type Galleon } from '../world/ship/Galleon'
+import { DECK_Y, type Galleon } from '../world/ship/Galleon'
+import { deckHalfWidth } from './deck'
 
-const BOARD_Z = -1.5
-export const CREW_BOARD_SPOT = { x: halfWidthAt(BOARD_Z) - 0.35, z: BOARD_Z }
+const BOARD_Z = -4
+export const CREW_BOARD_SPOT = { x: deckHalfWidth(BOARD_Z) - 0.35, z: BOARD_Z }
 
 const BLURB: Record<CharacterClass, string> = {
   navigator: 'Reads hidden ink: a hint on the map when stuck',

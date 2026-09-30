@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { mergeStatic } from '../world/merge'
 import type { AudioSystem } from '../audio/AudioSystem'
 import type { Hand } from '../input/Hand'
 import type { GrabSystem, Interactable } from '../interaction/GrabSystem'
@@ -125,6 +126,8 @@ export class Quarterdeck {
     perch.add(pole, bar, foot)
     group.add(perch)
 
+    // Stairs, railings, table and perch never move: one mesh per material (far fewer draw calls).
+    mergeStatic(group)
     ship.shake.add(group)
     this.wheel = grab.add(new ShipWheel(ship.shake, audio))
   }

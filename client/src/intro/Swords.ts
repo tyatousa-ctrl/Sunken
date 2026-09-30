@@ -4,7 +4,8 @@ import { Particles } from '../fx/Particles'
 import type { Hand } from '../input/Hand'
 import type { Interactable } from '../interaction/GrabSystem'
 import { Label } from '../ui/Label'
-import { DECK_Y, halfWidthAt } from '../world/ship/Galleon'
+import { DECK_Y } from '../world/ship/Galleon'
+import { deckHalfWidth } from './deck'
 
 export const SWORD_COUNT = 4
 /** Blade from just past the guard to the tip (sword-local; the blade points along -z). */
@@ -23,7 +24,7 @@ const SUBSTEPS = 4
 const HIGHLIGHT = new THREE.Color(0x2e7896)
 const BLACK = new THREE.Color(0x000000)
 /** Where the rack stands: against the port rail between the masts (ship-local). */
-const RACK_Z = -6
+const RACK_Z = -14
 
 /** Something a blade can cut: a crew member, bot or sailor, as a few spheres. */
 export interface SwordTarget {
@@ -69,7 +70,7 @@ export class Swords {
     private readonly world: SwordWorld,
   ) {
     const rack = new THREE.Group()
-    rack.position.set(-(halfWidthAt(RACK_Z) - 0.4), DECK_Y, RACK_Z)
+    rack.position.set(-(deckHalfWidth(RACK_Z) - 0.4), DECK_Y, RACK_Z)
     // Faces inboard (+x), swords in a row along the rail.
     rack.rotation.y = Math.PI / 2
     const wood = new THREE.MeshStandardMaterial({ color: 0x5a3820, roughness: 0.85 })

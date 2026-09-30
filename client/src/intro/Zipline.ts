@@ -4,17 +4,40 @@ import type { Hand } from '../input/Hand'
 import type { Interactable } from '../interaction/GrabSystem'
 import type { Player } from '../movement/Player'
 import { Label } from '../ui/Label'
-import { DECK_Y, NEST_FLOOR_Y, halfWidthAt, type Galleon } from '../world/ship/Galleon'
+import { DECK_Y, NEST_FLOOR_Y, type Galleon } from '../world/ship/Galleon'
+import { deckHalfWidth } from './deck'
+import { ROOF_Y } from './Quarterdeck'
 
-// Ship-local ends of the part you slide along: from just outside the crow's nest rim (at head height
-// for someone standing in the nest) down and aft to the starboard side of the main deck, where a
-// knot stops you with your feet about a metre off the planks.
+/**
+ * A zipline's ship-local points: the part you slide along (`top` just outside the crow's nest rim at
+ * head height, down to a stopper knot at `stop`), and where the rope is made fast at each end.
+ */
+export interface ZiplineRoute {
+  top: THREE.Vector3
+  stop: THREE.Vector3
+  mastTie: THREE.Vector3
+  railTie: THREE.Vector3
+  /** Where you land: said on the sign in the nest. */
+  to: string
+}
+
 const LAND_Z = 5.2
-const TOP = new THREE.Vector3(0.72, NEST_FLOOR_Y + 1.85, 0.62)
-const STOP = new THREE.Vector3(halfWidthAt(LAND_Z) - 0.9, DECK_Y + 2.1, LAND_Z)
-/** Where the rope is made fast: round the mast above the nest, and down to the rail. */
-const MAST_TIE = new THREE.Vector3(0.12, NEST_FLOOR_Y + 2.5, 0.12)
-const RAIL_TIE = new THREE.Vector3(halfWidthAt(LAND_Z + 0.4) - 0.08, DECK_Y + 1.0, LAND_Z + 0.4)
+/** From the main nest down and aft to the starboard side of the main deck. */
+export const DECK_ROUTE: ZiplineRoute = {
+  top: new THREE.Vector3(0.72, NEST_FLOOR_Y + 1.85, 0.62),
+  stop: new THREE.Vector3(deckHalfWidth(LAND_Z) - 0.9, DECK_Y + 2.1, LAND_Z),
+  mastTie: new THREE.Vector3(0.12, NEST_FLOOR_Y + 2.5, 0.12),
+  railTie: new THREE.Vector3(deckHalfWidth(LAND_Z + 0.4) - 0.08, DECK_Y + 1.0, LAND_Z + 0.4),
+  to: 'the main deck',
+}
+/** From the main nest aft to the quarterdeck, where Polly perches (a gentler run). */
+export const POLLY_ROUTE: ZiplineRoute = {
+  top: new THREE.Vector3(-0.72, NEST_FLOOR_Y + 1.85, 0.62),
+  stop: new THREE.Vector3(-0.6, ROOF_Y + 2.1, 10.3),
+  mastTie: new THREE.Vector3(-0.12, NEST_FLOOR_Y + 2.5, 0.12),
+  railTie: new THREE.Vector3(-0.6, ROOF_Y + 1.0, 12.95),
+  to: 'the quarterdeck, by Polly',
+}
 /** Sliding speed (m/s) with one hand on the rope, and braking with both. */
 const SPEED = 4
 const BRAKED_SPEED = 2
@@ -36,7 +59,7 @@ export class Zipline implements Interactable {
   private readonly rope: THREE.Mesh
   private readonly top = new THREE.Vector3()
   private readonly stop = new THREE.Vector3()
-  private readonly sign = new Label({ width: 0.55, canvasWidth: 560, canvasHeight: 260, billboard: true })
+  private readonly sign = new Label({ width: 0.55, canvasWidth: 560, canvasHeight: 300, billboard: true })
   private readonly v = new THREE.Vector3()
   private readonly v2 = new THREE.Vector3()
   private readonly line = new THREE.Line3()
@@ -46,7 +69,9 @@ export class Zipline implements Interactable {
     private readonly rig: THREE.Object3D,
     private readonly player: Player,
     private readonly audio: AudioSystem,
+    private readonly route: ZiplineRoute = DECK_ROUTE,
   ) {
+    const { top: TOP, stop: STOP, mastTie: MAST_TIE, railTie: RAIL_TIE } = route
     const tar = new THREE.MeshStandardMaterial({ color: 0x7a5c38, roughness: 0.95 })
     const wood = new THREE.MeshStandardMaterial({ color: 0x4a2f1b, roughness: 0.85 })
     this.rope = ropeBetween(TOP, STOP, 0.016, tar)
@@ -59,10 +84,11 @@ export class Zipline implements Interactable {
     ship.shake.add(knot, cleat)
 
     // A sign hanging by the top of the rope, in the nest.
-    this.sign.mesh.position.set(TOP.x - 0.35, NEST_FLOOR_Y + 1.55, TOP.z + 0.1)
+    this.sign.mesh.position.set(TOP.x * 0.5, NEST_FLOOR_Y + 1.55, TOP.z + 0.1)
     ship.shake.add(this.sign.mesh)
     this.sign.set([
       { text: 'Zipline', size: 40, bold: true, color: '#f2b64a' },
+      { text: `to ${route.to}`, size: 26, color: '#ffe0a0' },
       { text: 'Grip the rope and hold on to slide down', size: 26 },
       { text: 'Grip with both hands to slow down', size: 26 },
       { text: 'Let go and you drop!', size: 22, color: '#b9c7cf' },
@@ -174,7 +200,7 @@ export class Zipline implements Interactable {
   /** The rope's slide part in world space (the ship may be shaking). */
   private ends(): void {
     this.ship.shake.updateWorldMatrix(true, false)
-    this.line.set(this.ship.shake.localToWorld(this.top.copy(TOP)), this.ship.shake.localToWorld(this.stop.copy(STOP)))
+    this.line.set(this.ship.shake.localToWorld(this.top.copy(this.route.top)), this.ship.shake.localToWorld(this.stop.copy(this.route.stop)))
   }
 }
 

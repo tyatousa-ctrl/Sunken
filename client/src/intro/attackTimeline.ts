@@ -34,10 +34,10 @@ export function planVolleys(seed = 1234): CannonShot[] {
     return s / 4294967296
   }
   const shots: CannonShot[] = [
-    // First cannonball smashes the scoreboard.
-    { fireAt: 3.5, target: 'scoreboard', x: 0, z: 0.4 },
-    { fireAt: 9, target: 'deck', x: 2.2, z: -9 },
-    { fireAt: 14, target: 'miss', x: 7, z: -2 },
+    // She turns broadside to face us first; then her first cannonball smashes the scoreboard.
+    { fireAt: TURN_START + TURN_SECONDS + 0.8, target: 'scoreboard', x: 0, z: 0.4 },
+    { fireAt: 11, target: 'deck', x: 2.2, z: -9 },
+    { fireAt: 15, target: 'miss', x: 7, z: -2 },
     { fireAt: 22, target: 'foremast', x: 0, z: -8 },
   ]
   let t = 27

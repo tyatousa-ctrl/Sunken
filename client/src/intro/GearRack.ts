@@ -3,8 +3,12 @@ import type { AudioSystem } from '../audio/AudioSystem'
 import type { Hand } from '../input/Hand'
 import type { GrabSystem } from '../interaction/GrabSystem'
 import { LooseItem } from '../interaction/LooseItem'
-import { DECK_Y, halfWidthAt, type Galleon } from '../world/ship/Galleon'
+import { DECK_Y, type Galleon } from '../world/ship/Galleon'
 import { makeMapMesh } from './TreasureMap'
+import { deckHalfWidth } from './deck'
+
+/** The scuba rack stands against the port rail forward of the main mast (ship-local z). */
+export const GEAR_Z = -7
 
 export type GearPiece = 'tank' | 'mask' | 'fins' | 'map'
 
@@ -46,8 +50,8 @@ export class GearRack {
     private readonly dropFromHand: (hand: Hand) => void,
   ) {
     const rack = new THREE.Group()
-    const z = 1.6
-    rack.position.set(-(halfWidthAt(z) - 0.45), DECK_Y, z)
+    const z = GEAR_Z
+    rack.position.set(-(deckHalfWidth(z) - 0.45), DECK_Y, z)
     rack.rotation.y = Math.PI / 2
     const wood = new THREE.MeshStandardMaterial({ color: 0x6b4527, roughness: 0.85 })
     for (const x of [-0.8, 0.8]) {
