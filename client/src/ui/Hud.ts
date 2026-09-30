@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { TEXT_LAYER } from './Label'
 
 interface Line {
   text: string
@@ -43,6 +44,7 @@ export class Hud {
     )
     this.panel.renderOrder = 900
     this.panel.visible = false
+    this.panel.layers.set(TEXT_LAYER)
     scene.add(this.panel)
     this.dom.className = 'hud-dom'
     document.body.appendChild(this.dom)

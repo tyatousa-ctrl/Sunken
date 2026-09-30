@@ -14,6 +14,7 @@ import { MiniMap, type MapDot } from '../ui/MiniMap'
 import { GameMenu, type MenuItem, type MenuSection } from '../ui/GameMenu'
 import { CLASSES, CLASS_NAMES, type CharacterClass } from '../systems/crew'
 import { saveSettings } from './settings'
+import { TEXT_LAYER } from '../ui/Label'
 import { WristComputer } from '../ui/WristComputer'
 import type { Settings } from './settings'
 import { Inventory } from '../systems/Inventory'
@@ -122,6 +123,7 @@ export class Game implements GameContext {
     this.menu = new GameMenu(this.scene, this.audio, () => this.menuItems())
     this.audio.setAmbience(settings.ambience)
     this.hud = new Hud(this.scene, this.camera)
+    this.setNotes(settings.notes)
     this.guide = new ControllerGuide(this.controllers.leftGrip, this.controllers.rightGrip)
     this.selfBody.makeSelf()
     this.topWater.visible = false
@@ -214,6 +216,14 @@ export class Game implements GameContext {
     this.fadeDir = 1
   }
 
+  /** Show or hide every floating note, sign and pop-up (and the desktop captions). */
+  setNotes(on: boolean): void {
+    this.settings.notes = on
+    if (on) this.camera.layers.enable(TEXT_LAYER)
+    else this.camera.layers.disable(TEXT_LAYER)
+    document.body.classList.toggle('no-notes', !on)
+  }
+
   /** Put down whatever is in both hands, close the map and backpack, and strip anything left stuck to them. */
   emptyHands(): void {
     const still = new THREE.Vector3()
@@ -257,6 +267,10 @@ export class Game implements GameContext {
       { row: 0, key: 'H', label: 'Empty my hands', sub: 'Drop everything, close the map', action: () => {
         this.emptyHands()
         this.hud.now('Hands empty.', 2)
+      } },
+      { row: 0, key: 'N', label: `Notes & signs: ${this.settings.notes ? 'On' : 'Off'}`, sub: this.settings.notes ? 'Touch to hide all floating words' : 'Touch to show them again', current: !this.settings.notes, action: () => {
+        this.setNotes(!this.settings.notes)
+        saveSettings(this.settings)
       } },
     ]
     CLASSES.forEach((cls, i) => {

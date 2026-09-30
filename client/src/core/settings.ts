@@ -20,12 +20,14 @@ export interface Settings {
   ambience: number
   /** Button guide on the right controller. */
   buttonHints: boolean
+  /** Floating notes, signs and pop-ups (the menu can switch them all off). */
+  notes: boolean
   /** Preferred class (the crew board on deck can change it). */
   character: 'navigator' | 'strongman' | 'deepDiver' | 'fishWhisperer'
 }
 
 const KEY = 'sunken-sicily.settings'
-const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap', seated: false, drunkFx: true, muted: false, name: '', spellMenu: false, character: 'strongman', ambience: 0.3, buttonHints: true }
+const DEFAULTS: Settings = { showFps: true, vignette: 'low', turn: 'snap', seated: false, drunkFx: true, muted: false, name: '', spellMenu: false, character: 'strongman', ambience: 0.3, buttonHints: true, notes: true }
 
 export function loadSettings(): Settings {
   try {

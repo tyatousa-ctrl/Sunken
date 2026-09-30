@@ -1,5 +1,8 @@
 import * as THREE from 'three'
 
+/** The render layer for floating notes, signs and pop-ups: the menu's "Notes & signs" shows or hides it. */
+export const TEXT_LAYER = 5
+
 export interface LabelOptions {
   /** Width in metres; height follows the canvas aspect. */
   width: number
@@ -43,6 +46,8 @@ export class Label {
       new THREE.MeshBasicMaterial({ map: this.texture, transparent: true, fog: false, depthWrite: false, depthTest: !options.onTop }),
     )
     this.mesh.renderOrder = options.onTop ? 760 : 10
+    // All floating words (signs, how-tos, button guides) can be switched off together from the menu.
+    this.mesh.layers.set(TEXT_LAYER)
   }
 
   set visible(on: boolean) {
