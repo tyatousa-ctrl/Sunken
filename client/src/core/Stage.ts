@@ -64,6 +64,8 @@ export interface GameContext {
   readonly inXr: boolean
   /** Half the render-target height in pixels, for particle sizing. */
   readonly halfHeight: number
+  /** Solo, or the crew's host (runs shared games like tug-of-war). */
+  isHost(): boolean
   /** Switch class (in a crew, swapping with whoever has it). */
   chooseClass(cls: CharacterClass): void
   /** Drop everything in both hands, close the map and backpack. */

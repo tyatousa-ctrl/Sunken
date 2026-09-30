@@ -413,6 +413,12 @@ Fixed:
 - **The bubble.** Folded away, new messages don't pop up: the "i" throbs for a moment instead; open it to read.
 - **Menu.** "Instructions: On/Off" (was "Notes & signs") turns every instruction off at once, and "Reopen closed instructions" brings back every one you closed. The start screen has the same on/off option.
 
+## Tug-of-war
+
+- **Amidships, along the deck.** A thick hemp rope at waist height with a red rag tied at its middle over a white chalk line; a red mark toward the bow and a blue one toward the stern, and a painted post at each end. Grip the rope on your side of the rag (Red: the bow half, Blue: the stern half) and haul it back hand over hand: only pulling toward your end counts (up to 2.5 m/s a hand), and the rope moves by how much harder one side pulls than the other. Drag the rag past your mark to win: confetti and a whistle for the winners, a bucket of seawater over each loser ("Sploosh!"). The board keeps the voyage's score (Red : Blue) and says what's happening.
+- **1v1, 2v1, 2v2, or alone.** With only one side manned, Bosun Bruno (a burly sailor) takes the other end and heaves, harder the longer the match goes.
+- **In a crew** every device sends what its hands are pulling; the host adds it all up, moves the rope and calls the winner for everyone.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.
