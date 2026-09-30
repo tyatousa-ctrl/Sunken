@@ -7,7 +7,7 @@ const TOUCH_REACH = 0.22
 const HEAD_REACH = 0.6
 
 // A five-armed starfish lying on sand or rock. Touch it and it curls its arms and glows softly from
-// then on. Three big ones carry a mark of the door's code on their backs, framed in a dial's shape.
+// then on. Three big ones carry a mark of the door's code on their undersides (pick them up and turn them over), framed in a dial's shape.
 export class Starfish {
   readonly group = new THREE.Group()
   counted = false
@@ -47,16 +47,20 @@ export class Starfish {
     parent.add(this.group)
   }
 
-  /** Paint a mark of the code on its back, framed in its dial's shape, facing `yaw`. */
+  /** How big it is (1: an ordinary starfish). */
+  get size(): number {
+    return this.star.scale.x
+  }
+
+  /** Carve a mark of the code on its underside, framed in its dial's shape: pick it up and turn it over. */
   setMark(symbol: string, emblem: Emblem, yaw: number): void {
     const size = this.star.scale.x
     const decal = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.12 * size, 0.12 * size).rotateX(-Math.PI / 2),
+      new THREE.PlaneGeometry(0.12 * size, 0.12 * size).rotateX(Math.PI / 2),
       new THREE.MeshStandardMaterial({ map: makeMark(symbol, emblem), transparent: true, depthWrite: false, roughness: 0.8, emissive: 0x6fd3f0, emissiveIntensity: 0.25, polygonOffset: true, polygonOffsetFactor: -2 }),
     )
-    decal.position.y = 0.05 * size
+    decal.position.y = -0.014 * size
     this.group.add(decal)
-    // Turn the whole starfish so the mark reads the right way up from `yaw`.
     this.group.rotation.y = yaw
   }
 

@@ -1,21 +1,26 @@
 import * as THREE from 'three'
 import { applyCaustics } from '../world/caustics'
 
-const CRUISE_SPEED = 1.1
-const RIDE_SPEED = 3.5
+const CRUISE_SPEED = 1.3
+/** NOS: this much faster, for this long, then this long to refill. */
+const BOOST_FACTOR = 3.5
+export const BOOST_SECONDS = 7
+export const RECHARGE_SECONDS = 7
 
-// A loggerhead turtle that glides a slow loop round the meadow, showing divers the way (her route
-// passes most of the starfish). The Fish Whisperer can ride her: she carries a rider up to the top of
-// the high reef, where the current stops anyone else, and then carries on with her loop.
+// A loggerhead turtle that glides a loop round the meadow and up over the top of the high reef. Anyone
+// can grip her shell and ride along. Strapped to her shell is a NOS canister: press its button and she
+// shoots along three and a half times as fast for 7 s; then it takes 7 s to refill.
 export class Turtle {
   readonly group = new THREE.Group()
-  /** Carrying someone: the stage moves the rider along with her. */
-  riding = false
+  /** Seconds of boost left (0: cruising). */
+  boostLeft = 0
+  /** Seconds until the canister's full again (0: ready). */
+  recharge = 0
   private readonly flippers: THREE.Group[] = []
   private readonly head = new THREE.Group()
   private index = 0
-  private rideTarget: THREE.Vector3 | null = null
-  private onArrive: (() => void) | null = null
+  private readonly nos = new THREE.Group()
+  private readonly lamp: THREE.MeshBasicMaterial
   private readonly v = new THREE.Vector3()
   private readonly q = new THREE.Quaternion()
   private time = 0
@@ -74,8 +79,43 @@ export class Turtle {
       this.flippers.push(hinge)
     }
 
+    // The NOS canister: a silver bottle strapped across the back of her shell, a red push-button on
+    // top, and a lamp: green ready, blue boosting, orange refilling.
+    const steel = new THREE.MeshStandardMaterial({ color: 0xc8ced4, roughness: 0.25, metalness: 0.85 })
+    const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.34, 14).rotateZ(Math.PI / 2), steel)
+    const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.08, 10).rotateX(Math.PI / 2), steel)
+    nozzle.position.set(0, -0.02, 0.1)
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.13, 0.13), new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 }))
+    const button = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.03, 12), new THREE.MeshStandardMaterial({ color: 0xd8261d, roughness: 0.4 }))
+    button.position.y = 0.075
+    this.lamp = new THREE.MeshBasicMaterial({ color: 0x3cff6a })
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), this.lamp)
+    lamp.position.set(0.12, 0.05, 0)
+    const label = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.06), new THREE.MeshBasicMaterial({ map: nosLabel(), transparent: true }))
+    label.rotation.x = -Math.PI / 2
+    label.position.set(0, 0.062, 0.035)
+    this.nos.add(bottle, nozzle, strap, button, lamp, label)
+    this.nos.position.set(0, 0.3, 0.35)
+    this.group.add(this.nos)
+
     this.group.position.copy(loop[0])
     parent.add(this.group)
+  }
+
+  /** The NOS button (world). */
+  get nosButton(): THREE.Vector3 {
+    return this.nos.localToWorld(new THREE.Vector3(0, 0.08, 0))
+  }
+
+  get nosReady(): boolean {
+    return this.boostLeft === 0 && this.recharge === 0
+  }
+
+  /** Hit the NOS: true if it fired (it may be empty and refilling). */
+  pressNos(): boolean {
+    if (!this.nosReady) return false
+    this.boostLeft = BOOST_SECONDS
+    return true
   }
 
   /** Where a rider sits: just above her shell. */
@@ -83,35 +123,28 @@ export class Turtle {
     return this.group.localToWorld(target.set(0, 0.55, 0.1))
   }
 
-  /** Carry a rider to `to`, then call `arrived` and carry on with the loop. */
-  ride(to: THREE.Vector3, arrived: () => void): void {
-    this.riding = true
-    this.rideTarget = to.clone()
-    this.onArrive = arrived
-  }
-
   update(dt: number): void {
     this.time += dt
     // Slow, powerful strokes of the front flippers; the back ones steer.
-    const stroke = Math.sin(this.time * (this.riding ? 3.2 : 1.8))
+    if (this.boostLeft > 0) {
+      this.boostLeft = Math.max(0, this.boostLeft - dt)
+      if (this.boostLeft === 0) this.recharge = RECHARGE_SECONDS
+    } else this.recharge = Math.max(0, this.recharge - dt)
+    this.lamp.color.setHex(this.boostLeft > 0 ? 0x4ab0ff : this.recharge > 0 ? 0xff9a2a : 0x3cff6a)
+    const boosting = this.boostLeft > 0
+    const stroke = Math.sin(this.time * (boosting ? 6 : 1.8))
     this.flippers[0].rotation.z = stroke * 0.55
     this.flippers[1].rotation.z = -stroke * 0.55
     this.flippers[2].rotation.z = stroke * 0.2
     this.flippers[3].rotation.z = -stroke * 0.2
     this.head.rotation.y = Math.sin(this.time * 0.4) * 0.25
 
-    const goal = this.rideTarget ?? this.loop[this.index]
+    const goal = this.loop[this.index]
     const to = this.v.copy(goal).sub(this.group.position)
     const dist = to.length()
-    const speed = this.riding ? RIDE_SPEED : CRUISE_SPEED
-    if (dist < 0.3) {
-      if (this.rideTarget) {
-        this.rideTarget = null
-        this.riding = false
-        const done = this.onArrive
-        this.onArrive = null
-        done?.()
-      } else this.index = (this.index + 1) % this.loop.length
+    const speed = CRUISE_SPEED * (boosting ? BOOST_FACTOR : 1)
+    if (dist < 0.3 + (boosting ? 0.4 : 0)) {
+      this.index = (this.index + 1) % this.loop.length
       return
     }
     this.group.position.addScaledVector(to, Math.min(1, (speed * dt) / dist))
@@ -119,6 +152,23 @@ export class Turtle {
     const yaw = Math.atan2(-to.x, -to.z)
     const pitch = Math.atan2(to.y, Math.hypot(to.x, to.z)) * 0.6
     this.q.setFromEuler(new THREE.Euler(pitch, yaw, Math.sin(this.time * 0.9) * 0.06, 'YXZ'))
-    this.group.quaternion.slerp(this.q, Math.min(1, dt * 1.5))
+    this.group.quaternion.slerp(this.q, Math.min(1, dt * (boosting ? 4 : 1.5)))
   }
+}
+
+function nosLabel(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = 256
+  canvas.height = 76
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#1b3a8a'
+  ctx.fillRect(0, 0, 256, 76)
+  ctx.fillStyle = '#ffffff'
+  ctx.font = 'italic bold 58px system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('NOS', 128, 40)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
 }

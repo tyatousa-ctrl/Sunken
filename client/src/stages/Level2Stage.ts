@@ -6,7 +6,6 @@ import type { SwimEnvironment } from '../movement/environment'
 import levelData from '../data/levels/level2.json'
 import type { LevelData } from '../systems/LevelProgress'
 import type { Interactable } from '../interaction/GrabSystem'
-import type { BotTask } from '../bots/world'
 import { makeItem } from '../systems/items'
 import { SeabedScene } from '../world/SeabedScene'
 import { Particles } from '../fx/Particles'
@@ -78,9 +77,10 @@ const AMPHORAE: [number, number, number][] = [[29.5, -18, 0.4], [-14, 12, 2.1], 
 
 // Level 2, The Seagrass Meadows. Open Posidonia meadows with a rocky reef to the north and a loggerhead
 // turtle gliding a loop round it all. The door of stone has three dials (numbers, letters, signs);
-// three big starfish in the meadow each carry one mark of the code, framed in its dial's shape. One
-// lies on top of the high reef, where the current drags divers down: grip the turtle's shell and she
-// carries you up. Set the dials to 2, C, ! and map piece III waits in the chamber behind the door.
+// three big starfish in the meadow each carry one mark of the code on their undersides (pick them up
+// and turn them over), framed in its dial's shape. One lies on top of the high reef, where the current
+// drags divers down: grip the turtle's shell and ride her loop up over it (her NOS button speeds her
+// up). Set the dials to 2, C, ! and map piece III waits in the chamber behind the door.
 export class Level2Stage extends DiveLevel {
   readonly id = 'level2'
   private world!: SeabedScene
@@ -92,9 +92,6 @@ export class Level2Stage extends DiveLevel {
   private readonly clues: Starfish[] = []
   /** The hand holding the turtle's shell while you ride. */
   private riderHand: Hand | null = null
-  /** A bot rode up the high reef: what it calls out when she arrives. */
-  private botArrival: (() => void) | null = null
-  private botRode = false
   private readonly turnedDials = new Set<number>()
   private wrongCooldown = 0
   private readonly current = new Particles({ max: 260, gravity: 0, drag: 0, blending: THREE.AdditiveBlending })
@@ -138,8 +135,9 @@ export class Level2Stage extends DiveLevel {
 
     // The loggerhead's loop passes most of the starfish (and the pillar), a gentle tour of the meadow.
     const loop = [
-      [0, 3, 26], [9, 2.5, 20], [18, 3, 6], [20, 2.8, -6], [14, 3, -18], [2, 4, -24], [-14, 3.5, -22], [-24, 4, -12],
-      [-20, 3, 2], [-12, 2.6, 16], [-4, 3, 22],
+      [0, 3, 26], [9, 2.5, 20], [18, 3, 6], [20, 2.8, -6], [14, 3, -18], [2, 4, -24], [-14, 3.5, -22], [-20, 6.5, -16],
+      // Up and over the top of the high reef (riders can let go there), and down again.
+      [PILLAR.x + 0.6, PILLAR_TOP + 1.3, PILLAR.z + 0.4], [-23, 6, 0], [-20, 3, 4], [-12, 2.6, 16], [-4, 3, 22],
     ].map(([x, y, z]) => new THREE.Vector3(x, meadowHeight(x, z) + y, z))
     this.turtle = new Turtle(this.root, loop)
     this.fishSchools = new ReefFish(this.root, [
@@ -245,14 +243,15 @@ export class Level2Stage extends DiveLevel {
     return ['Hidden ink: a gem waits on top of the high reef, one sleeps in an amphora to the east, and one lies behind the door of stone.']
   }
 
-  /** A crewmate turned a dial, or the turtle set off with a rider. */
+  /** A crewmate turned a dial, or hit the turtle's NOS. */
   protected onProp(key: string, v: number[]): void {
     const dial = /^dial(\d)$/.exec(key)?.[1]
     if (dial !== undefined) {
       const d = this.door.dials[Number(dial)]
       if (d) d.show(d.symbols[v[0]] ?? d.symbol)
+      this.paintDials()
     }
-    if (key === 'turtle' && !this.turtle.riding) this.turtle.ride(this.pillarDropOff(), () => this.turtleArrived())
+    if (key === 'nos') this.turtle.pressNos()
   }
 
   // ---- Puzzle -----------------------------------------------------------------------------------
@@ -268,9 +267,26 @@ export class Level2Stage extends DiveLevel {
       this.starfish.push(star)
     })
     this.placeClueRocks()
+    // Pick any starfish up (and turn it over); let go and it drifts back to where it lay.
+    for (const [i, star] of this.starfish.entries()) {
+      const marked = this.clues.includes(star)
+      this.grab.add(
+        new LooseItem(star.group, {
+          radius: 0.13 * star.size,
+          settle: 'home',
+          onGrab: (hand) => {
+            star.count()
+            hand.pulse(0.3, 40)
+            if (marked) this.teach(`flip${i}`, 'Something is carved on its underside... turn it over and look!', 4)
+            return false
+          },
+        }),
+      )
+    }
 
     // Each dial starts on a wrong mark.
     ;['7', 'F', '#'].forEach((mark, i) => this.door.dials[i].show(mark))
+    this.paintDials()
     this.door.dials.forEach((dial, i) => {
       this.grab.add(dial)
       dial.onSet = () => {
@@ -278,8 +294,9 @@ export class Level2Stage extends DiveLevel {
         this.onDial(i)
       }
     })
-    // Grip the turtle's shell to ride her.
+    // Grip the turtle's shell to ride her; press the NOS button on her back to go fast.
     this.grab.add(this.turtleShell())
+    this.grab.add(this.nosButton())
 
     // Map piece III on a stone plinth in the chamber.
     const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 0.8, 8), new THREE.MeshStandardMaterial({ color: 0x6d665b, roughness: 1, flatShading: true }))
@@ -339,7 +356,7 @@ export class Level2Stage extends DiveLevel {
     // Came upon one of the marked starfish.
     this.clues.forEach((clue, i) => {
       if (head.distanceTo(clue.group.position) < 2.4) {
-        this.teach(`clue${i}`, `A big starfish with a mark on its back, framed in a ${DIAL_SETS[CLUES[i].dial].emblem}, like the middle of one of the dials by the door.`, 6)
+        this.teach(`clue${i}`, 'An unusually big starfish... Pick it up and turn it over.', 5)
       }
     })
 
@@ -356,6 +373,7 @@ export class Level2Stage extends DiveLevel {
 
   /** A dial settled on a mark. */
   private onDial(i: number): void {
+    this.paintDials()
     if (this.door.opened) return
     this.turnedDials.add(i)
     if (this.door.code === ANSWER) {
@@ -396,7 +414,13 @@ export class Level2Stage extends DiveLevel {
 
   // ---- The turtle ride --------------------------------------------------------------------------
 
-  /** Her shell, as something to grip: hold on and she carries you up the high reef. */
+  /** Each dial glows golden while it shows its mark of the code. */
+  private paintDials(): void {
+    const marks = ANSWER.match(/10|./g)!
+    this.door.dials.forEach((d, i) => d.setCorrect(d.symbol === marks[i]))
+  }
+
+  /** Her shell, as something to grip: hold on and ride her loop (it goes up over the high reef). */
   private turtleShell(): Interactable {
     const center = new THREE.Vector3()
     return {
@@ -404,8 +428,30 @@ export class Level2Stage extends DiveLevel {
       grabGap: (point) => (this.riderHand ? Infinity : point.distanceTo(this.turtle.group.localToWorld(center.set(0, 0.2, 0))) - SHELL_REACH),
       grab: (hand) => this.mount(hand),
       release: (hand) => {
-        if (hand === this.riderHand) this.dismount('You let go of the turtle.')
+        if (hand === this.riderHand) this.dismount()
       },
+      setHighlight: () => {},
+    }
+  }
+
+  /** The NOS button on her back: grip it (or poke it) for 7 s of speed; it refills 7 s after. */
+  private nosButton(): Interactable {
+    return {
+      pullable: false,
+      grabGap: (point) => point.distanceTo(this.turtle.nosButton) - 0.12,
+      grab: (hand) => {
+        hand.held = null
+        if (this.turtle.pressNos()) {
+          this.shareProp('nos', [1])
+          for (const h of this.game.hands) h.pulse(0.8, 200)
+          this.game.audio.play('swish', this.turtle.nosButton, 1)
+          this.game.hud.now('NOS! Hold on tight!', 2)
+        } else {
+          hand.pulse(0.15, 30)
+          this.game.hud.now(this.turtle.boostLeft > 0 ? 'Already boosting!' : `The NOS is refilling: ${Math.ceil(this.turtle.recharge)} s.`, 2)
+        }
+      },
+      release: () => {},
       setHighlight: () => {},
     }
   }
@@ -416,35 +462,16 @@ export class Level2Stage extends DiveLevel {
     this.riding = true
     game.player.frozen = true
     hand.pulse(0.5, 80)
-    if (!this.turtle.riding) {
-      this.turtle.ride(this.pillarDropOff(), () => this.turtleArrived())
-      this.shareProp('turtle', [1])
-    }
-    game.hud.now('You grab hold of her shell. Hold on: up she goes!', 3)
+    game.hud.now('You grab hold of her shell and ride along. Her loop goes up over the high reef: let go at the top. The red NOS button on her back makes her fly!', 5)
   }
 
-  private dismount(message: string): void {
+  private dismount(): void {
     const { game } = this
     if (!this.riding) return
     this.riding = false
     this.riderHand = null
     game.player.frozen = false
     game.player.physics.velocity.set(0, 0, 0)
-    game.hud.now(message, 3)
-  }
-
-  /** She reached the top of the high reef: riders let go there. */
-  private turtleArrived(): void {
-    const hand = this.riderHand
-    if (hand && hand.held) hand.held = null
-    this.dismount('She sets you down on top of the high reef.')
-    this.botArrival?.()
-    this.botArrival = null
-  }
-
-  /** Where the turtle sets a rider down: just above the high reef's top, beside the marked starfish. */
-  private pillarDropOff(): THREE.Vector3 {
-    return new THREE.Vector3(PILLAR.x + 0.9, pillarTop() + 0.6, PILLAR.z + 1.1)
   }
 
   /** While riding, the diver moves with the turtle's shell. */
@@ -502,25 +529,4 @@ export class Level2Stage extends DiveLevel {
     if (inChamber(from) && !inChamber(to)) return [new THREE.Vector3(0, 1.6, DOOR.z - 2), new THREE.Vector3(0, 1.8, DOOR.z + 2.5), to]
     return [to]
   }
-
-  /**
-   * Once a human has been dragged down by the current (so they know the high reef matters), a bot
-   * rides the turtle up and calls out that there's something up there, without saying what.
-   */
-  protected botTask(): BotTask | null {
-    if (this.botRode || !this.taught.has('downcurrent') || this.turtle.riding) return null
-    return {
-      position: this.turtle.group.position.clone().add(new THREE.Vector3(0, 0.8, 0)),
-      skill: 'fishWhisperer',
-      ready: true,
-      act: (name: string) => {
-        this.botRode = true
-        this.botArrival = () => this.game.hud.say(`${name}: "There's a big starfish up here on the high reef, with a mark on its back! Grab the turtle's shell and come and see."`, 5)
-        this.turtle.ride(this.pillarDropOff(), () => this.turtleArrived())
-        this.shareProp('turtle', [1])
-        this.game.hud.now(`${name} catches hold of the turtle and rides her up the high reef.`, 3)
-      },
-    }
-  }
 }
-

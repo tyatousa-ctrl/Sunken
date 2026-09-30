@@ -104,6 +104,8 @@ export class StoneDial implements Interactable {
   private readonly holds = new Map<Hand, number>()
   private angle = 0
   private lastDigit = 0
+  private highlighted = false
+  private correct = false
   private readonly material: THREE.MeshStandardMaterial
   private readonly v = new THREE.Vector3()
 
@@ -118,14 +120,14 @@ export class StoneDial implements Interactable {
     this.group.add(post)
     this.material = new THREE.MeshStandardMaterial({ map: makeDialTexture(symbols, emblem), roughness: 0.9 })
     applyCaustics(this.material, 0.4)
-    // The face is a thick stone disc facing +z, turning about z.
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(DIAL_RADIUS, DIAL_RADIUS, 0.12, 36), [
-      new THREE.MeshStandardMaterial({ color: 0x6d665b, roughness: 1 }),
-      this.material,
-      this.material,
-    ])
+    // The face: a thick stone disc facing +z, turning about z, with the carved marks on a flat circle
+    // over its front (a circle's texture sits upright, so the mark at the top is the one chosen).
+    const stone = new THREE.MeshStandardMaterial({ color: 0x6d665b, roughness: 1 })
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(DIAL_RADIUS, DIAL_RADIUS, 0.12, 36), stone)
     disc.rotation.x = Math.PI / 2
-    this.face.add(disc)
+    const front = new THREE.Mesh(new THREE.CircleGeometry(DIAL_RADIUS, 48), this.material)
+    front.position.z = 0.061
+    this.face.add(disc, front)
     this.face.position.set(0, 1.6, 0.05)
     this.group.add(this.face)
     // The notch at the top that marks the chosen number.
@@ -173,7 +175,19 @@ export class StoneDial implements Interactable {
   }
 
   setHighlight(on: boolean): void {
-    this.material.emissive.setHex(on ? 0x2e7896 : 0x000000)
+    this.highlighted = on
+    this.paint()
+  }
+
+  /** Glow golden yellow while it shows the right mark. */
+  setCorrect(on: boolean): void {
+    this.correct = on
+    this.paint()
+  }
+
+  private paint(): void {
+    this.material.color.setHex(this.correct ? 0xffd84a : 0xffffff)
+    this.material.emissive.setHex(this.correct ? 0x8a6400 : this.highlighted ? 0x2e7896 : 0x000000)
   }
 
   /** Show a mark (a crewmate turned it, or the crew already solved it); ignored while you hold it. */

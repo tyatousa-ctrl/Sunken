@@ -213,6 +213,15 @@ Riddle: *"When noon's light swims through the door, blue shows the way the old o
 
 **Checked:** a full walkthrough in the emulator (the arch, tunnel, surfacing, the walls holding, climbing out, turning all three shells, the carving, the map piece, stepping off, the heave, out through the passage, the summary). Still to tune: the rippling light on the cave walls is too strong and even (a toned-down version is ready).
 
+## Playtest fixes: dials, starfish, turtle, shells
+
+- **Level 2 dials line up.** The carved marks were drawn on the dial's round face turned a quarter turn, so the mark under the gold notch wasn't the one the dial had settled on. The marks now sit on their own flat face, upright, so the mark at the top is always the one chosen. A dial showing its right mark of the code **glows golden yellow**.
+- **Pick up the starfish.** Every starfish can be picked up (it curls and glows) and turned over; let go and it drifts back to where it lay. The three big ones carry their marks **on their undersides** now, so you have to turn them over to read them.
+- **The turtle just loops.** She no longer carries riders off somewhere; she swims her loop round the meadow, which now rises up over the top of the high reef (let go there to reach the starfish up top). A **NOS canister** is strapped to her shell, with a red button and a lamp (green ready, blue boosting, orange refilling): press it (grip it) and she swims three and a half times as fast for 7 s, then it takes 7 s to refill. In a crew, a boost happens for everyone. (The bot no longer rides her up.)
+- **Level 3 shells lock on.** Turning a shell close to the angle that passes the light on (within 9°), it clicks and locks on exactly, with a jolt in your hand, and holds there until you turn well past it; let go within 30° and it settles into place. The beam may be off by 10° and still count.
+
+**Checked:** in the emulator: the dials show 2 and C under their notches and glow gold; a marked starfish picked up and turned over shows "2" in a circle, and goes back when let go; riding the turtle and hitting NOS (3.5× faster); all three shells turned 6° too far lock on and light the carving; the whole of Level 3 through to Level 4.
+
 ## Level 3, finished
 
 - **Stalactites** hang from the grotto's roof (well above anyone standing on a shelf), the same blue-lit rock as the roof.

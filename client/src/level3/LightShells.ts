@@ -4,9 +4,11 @@ import type { Hand } from '../input/Hand'
 import type { Interactable } from '../interaction/GrabSystem'
 
 /** How far off (degrees, seen from above) a bounce may be and still land on the next shell. */
-const AIM_TOLERANCE = 8
+const AIM_TOLERANCE = 10
 /** Let go of a shell this close (degrees) to the right angle and it settles exactly into place. */
-const SNAP = 10
+const SNAP = 30
+/** While turning, within this (degrees) of the right angle it clicks and locks on (turn further to break free). */
+const LOCK = 9
 const MISS_LENGTH = 14
 const SHELL_RADIUS = 0.36
 
@@ -150,6 +152,7 @@ export class Shell implements Interactable {
   private readonly nacre: THREE.MeshStandardMaterial
   private readonly v = new THREE.Vector3()
   private tick = 0
+  private locked = false
 
   constructor(
     root: THREE.Object3D,
@@ -257,7 +260,20 @@ export class Shell implements Interactable {
     let d = this.handAngle(hand) - start.handAngle
     d = Math.atan2(Math.sin(d), Math.cos(d))
     const before = this.yaw
-    this.setYaw(start.yaw + d)
+    let want = start.yaw + d
+    // Close to the right angle it locks on with a click, and stays put until turned well past it.
+    let off = want - this.solution
+    off = Math.atan2(Math.sin(off), Math.cos(off))
+    const inLock = Math.abs(off) < THREE.MathUtils.degToRad(this.locked ? LOCK * 1.6 : LOCK)
+    if (inLock) {
+      want = this.solution
+      if (!this.locked) {
+        hand.pulse(0.8, 90)
+        this.audio.play('thud', this.at, 0.6)
+      }
+    }
+    this.locked = inLock
+    this.setYaw(want)
     // A stony grind every few degrees.
     this.tick += Math.abs(this.yaw - before)
     if (this.tick > 0.12) {
