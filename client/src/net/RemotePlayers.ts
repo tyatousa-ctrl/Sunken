@@ -185,6 +185,11 @@ export class Avatar {
     ]
   }
 
+  /** Their crew colour (for the mini map). */
+  get tint(): THREE.Color {
+    return this.color.color
+  }
+
   setInfo(entry: AvatarInfo): void {
     this.color.color.set(entry.color)
     const text = entry.connected ? entry.name : `${entry.name} (reconnecting)`

@@ -6,8 +6,8 @@ export interface GogglesStatus {
   refilling: boolean
 }
 
-// A little heads-up readout printed inside the dive mask's glass, low in the left corner of view:
-// the air gauge and depth. It only shows while the mask is on.
+// A little heads-up readout printed inside the dive mask's glass, in the top-left corner of view:
+// the air gauge and depth (the mini map sits in the top right). It only shows while the mask is on.
 export class GogglesDisplay {
   private readonly canvas = document.createElement('canvas')
   private readonly ctx: CanvasRenderingContext2D
@@ -23,15 +23,16 @@ export class GogglesDisplay {
     this.texture = new THREE.CanvasTexture(this.canvas)
     this.texture.colorSpace = THREE.SRGBColorSpace
     this.panel = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.058, 0.022),
+      new THREE.PlaneGeometry(0.066, 0.025),
       new THREE.MeshBasicMaterial({ map: this.texture, transparent: true, depthTest: false, depthWrite: false, fog: false, toneMapped: false }),
     )
-    // Low and to the left, close in on the glass: a glance down-left reads it, straight ahead ignores it.
-    this.panel.position.set(-0.092, -0.084, -0.26)
-    this.panel.rotation.set(0.3, 0.33, 0)
+    // Up and to the left, inside the mask's rim, tilted to face the eye: a glance up-left reads it.
+    this.panel.position.set(-0.106, 0.076, -0.26)
+    this.panel.rotation.set(-0.24, 0.36, 0, 'YXZ')
     this.panel.renderOrder = 1001
     this.panel.frustumCulled = false
     this.panel.visible = false
+    ;(this.panel.material as THREE.MeshBasicMaterial).opacity = 0.95
     camera.add(this.panel)
   }
 

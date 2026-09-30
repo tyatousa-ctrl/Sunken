@@ -20,6 +20,7 @@ import { TUNING } from '../movement/tuning'
 import type { BotTask, BotWorld } from '../bots/world'
 import { Backpack } from '../ui/Backpack'
 import { MapView } from '../ui/MapView'
+import type { MapArea } from '../ui/MiniMap'
 import { Bubbles } from '../world/Bubbles'
 import { SURFACE_Y, type RockCollider } from '../world/SeabedScene'
 
@@ -238,6 +239,12 @@ export abstract class DiveLevel implements Stage {
       score: game.party.score,
       mana: Math.min(3, game.party.inventory.count('rune')),
     })
+  }
+
+  /** The goggles' mini map: the level's roaming area, seen from just under the surface. */
+  mapArea(): MapArea | null {
+    if (!this.env) return null
+    return { x: 0, z: 0, size: Math.min(this.env.radius * 2, 110), top: this.env.surfaceY - 0.25, name: this.level.name }
   }
 
   /** The menu's "Empty my hands": the map and backpack close too. */

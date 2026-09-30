@@ -15,7 +15,7 @@ export class Hud {
   private readonly canvas = document.createElement('canvas')
   private readonly ctx: CanvasRenderingContext2D
   private readonly texture: THREE.CanvasTexture
-  private readonly panel: THREE.Mesh
+  readonly panel: THREE.Mesh
   private readonly dom = document.createElement('div')
   private subtitle: Line | null = null
   private readonly queue: Line[] = []

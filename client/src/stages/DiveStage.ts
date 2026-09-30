@@ -1,4 +1,5 @@
 import type { ButtonGuide } from '../ui/ControllerGuide'
+import type { MapArea } from '../ui/MiniMap'
 import * as THREE from 'three'
 import { disposeTree, type GameContext, type Stage } from '../core/Stage'
 import { GrabSystem } from '../interaction/GrabSystem'
@@ -47,6 +48,10 @@ export class DiveStage implements Stage {
 
     game.vignette.setMask(true)
     game.player.enter(env, new THREE.Vector3(0, 0.6, 4), 0, this.bubbles)
+  }
+
+  mapArea(): MapArea {
+    return { x: 0, z: 0, size: SANDBOX_RADIUS * 2, top: SURFACE_Y - 0.25, name: 'Sandbox' }
   }
 
   guide(): ButtonGuide {

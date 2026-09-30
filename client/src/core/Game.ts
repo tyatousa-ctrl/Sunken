@@ -10,6 +10,7 @@ import { Player } from '../movement/Player'
 import { FpsOverlay } from '../ui/FpsOverlay'
 import { Hud } from '../ui/Hud'
 import { GogglesDisplay } from '../ui/GogglesDisplay'
+import { MiniMap, type MapDot } from '../ui/MiniMap'
 import { GameMenu, type MenuItem, type MenuSection } from '../ui/GameMenu'
 import { CLASSES, CLASS_NAMES, type CharacterClass } from '../systems/crew'
 import { saveSettings } from './settings'
@@ -41,6 +42,8 @@ export class Game implements GameContext {
   readonly hud: Hud
   readonly wrist: WristComputer
   readonly goggles: GogglesDisplay
+  /** Top right of the mask: the level from above, the crew as dots. */
+  readonly miniMap: MiniMap
   /** Right thumbstick (Tab on desktop): empty your hands, switch class, hop to a level. */
   readonly menu: GameMenu
   /** Makes a fresh stage by id ('intro', 'level1' … 'vault', 'sandbox'); set by main. */
@@ -109,6 +112,7 @@ export class Game implements GameContext {
     this.fps = new FpsOverlay(this.renderer, this.controllers.leftGrip, settings.showFps)
     this.wrist = new WristComputer(this.controllers.leftGrip)
     this.goggles = new GogglesDisplay(this.camera)
+    this.miniMap = new MiniMap(this.camera)
     this.audio = new AudioSystem(this.camera, this.scene, this.controllers.hands)
     this.menu = new GameMenu(this.scene, this.audio, () => this.menuItems())
     this.audio.setAmbience(settings.ambience)
@@ -280,6 +284,21 @@ export class Game implements GameContext {
     }
   }
 
+  /** Crewmates and bots on the mini map (everyone in this stage but you). */
+  private mapDots(): MapDot[] {
+    const dots: MapDot[] = []
+    for (const [, avatar] of this.remote?.visibleAvatars() ?? []) dots.push({ position: avatar.head.getWorldPosition(new THREE.Vector3()), color: avatar.tint })
+    for (const bot of this.bots.bots.values()) if (bot.avatar.group.visible) dots.push({ position: bot.head, color: bot.avatar.tint })
+    return dots
+  }
+
+  private updateMiniMap(dt: number): void {
+    const area = this.pending ? null : (this.stage?.mapArea?.() ?? null)
+    if (this.miniMap.update(dt, this.vignette.maskOn, area, this.camera, this.mapDots())) {
+      this.miniMap.draw(this.renderer, this.scene, [this.rig, this.hud.panel, this.selfBody.group, this.topWater])
+    }
+  }
+
   /** The crew moved on while we weren't looking: go too. */
   private followCrew(): void {
     const target = this.crewStage
@@ -321,6 +340,7 @@ export class Game implements GameContext {
     // Mask on (from the deck onwards): the air gauge lives in the goggles, not on the wrist.
     this.wrist.airInMask = this.vignette.maskOn
     this.goggles.update(dt, this.vignette.maskOn, { air: this.player.air.fraction, depth: this.player.depth, refilling: this.player.refilling })
+    this.updateMiniMap(dt)
     this.fps.update(time)
     this.renderer.render(this.scene, this.camera)
   }

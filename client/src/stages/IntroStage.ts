@@ -1,5 +1,6 @@
 import type { ButtonGuide } from '../ui/ControllerGuide'
 import * as THREE from 'three'
+import type { MapArea } from '../ui/MiniMap'
 import { disposeTree, type GameContext, type Stage } from '../core/Stage'
 import { Particles } from '../fx/Particles'
 import { GrabSystem } from '../interaction/GrabSystem'
@@ -252,6 +253,12 @@ export class IntroStage implements Stage {
     game.vignette.setMask(false)
     game.hud.say('Welcome aboard! Golden hour off the Sicilian coast. Enjoy the calm.', 5, 'Salvo')
     game.hud.setPrompt('Walk: left stick · Turn: right stick · Grab: grip. Pick up a blunderbuss from the rack up at the bow, by the clay thrower.')
+  }
+
+  /** The mini map (once the mask is on): our deck from above, bow to stern. */
+  mapArea(): MapArea | null {
+    const mid = this.ship.group.localToWorld(new THREE.Vector3(0, DECK_Y + 3.4, (DECK_BOW_Z + STERN_Z) / 2))
+    return { x: mid.x, z: mid.z, size: STERN_Z - DECK_BOW_Z + 8, top: mid.y, name: 'On deck', exposure: 0.3, boost: 0.3 }
   }
 
   guide(): ButtonGuide {

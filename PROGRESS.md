@@ -362,6 +362,11 @@ Fixed:
 - **Switch class any time.** From the menu, solo or in a crew. In a crew, picking a class another player has swaps it with them; both are told.
 - **One crew, one level.** When anyone moves on (through the arch, over the side, or by the menu), the whole crew goes with them, with a message saying who went ahead. Anyone still on deck when someone dives is washed overboard with their gear on. Someone joining late goes straight to where the crew is. (The server remembers the crew's level.)
 
+## Goggles: mini map and air
+
+- **Mini map (top right of the mask).** The level seen from above: drawn from the level itself when you arrive (and again every 20 s, so opened doors and moved boulders show), with a dot in each crewmate's and bot's colour and a gold arrow for you, pointing the way you face. North is up; anyone off the edge shows at the rim. The level's name is under it. Each stage says what the map covers: the deck bow to stern, the whole roaming area of each dive level, the sea by the cliff and the grotto in Level 3, the treasure room in the vault.
+- **Air (top left of the mask).** The air gauge and depth moved from low-left to the top-left corner, a little bigger. Both sit well inside the mask's rim, tilted toward your eye.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.

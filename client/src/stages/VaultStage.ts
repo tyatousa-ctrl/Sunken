@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import type { MapArea } from '../ui/MiniMap'
 import type { GameContext, Stage } from '../core/Stage'
 import type { Interactable } from '../interaction/GrabSystem'
 import { LooseItem } from '../interaction/LooseItem'
@@ -9,7 +10,7 @@ import { makeItem } from '../systems/items'
 import { SURFACE_Y } from '../world/SeabedScene'
 import { Particles } from '../fx/Particles'
 import { Label } from '../ui/Label'
-import { CHEST_AT, FALLS, LAGOON, buildCavern, constrainInCavern, containInLagoon, gold, insideFootprint, lagoonR, vaultFloor, type CavernParts } from '../vault/Cavern'
+import { CAVERN, CHEST_AT, FALLS, FLOOR_Y, LAGOON, buildCavern, constrainInCavern, containInLagoon, gold, insideFootprint, lagoonR, vaultFloor, type CavernParts } from '../vault/Cavern'
 import { Keeper } from '../vault/Keeper'
 import { Oyster } from '../vault/Oyster'
 import { DiveLevel, type DiveLevelSetup } from './DiveLevel'
@@ -421,6 +422,11 @@ export class VaultStage extends DiveLevel {
       default:
         return CHEST_AT.clone().add(new THREE.Vector3(0, 1, 0))
     }
+  }
+
+  /** The whole treasure room, lagoon and gold, seen from just above the heaps. */
+  mapArea(): MapArea | null {
+    return { x: CAVERN.center.x, z: CAVERN.center.z, size: 60, top: FLOOR_Y + 3.5, name: this.level.name }
   }
 
   /** Bots keep to the lagoon (they don't climb out onto the gold). */

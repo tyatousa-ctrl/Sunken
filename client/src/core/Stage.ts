@@ -12,6 +12,7 @@ import type { Avatar, RemotePlayers } from '../net/RemotePlayers'
 import type { BotCrew } from '../bots/BotCrew'
 import type { Settings } from './settings'
 import type { ButtonGuide } from '../ui/ControllerGuide'
+import type { MapArea } from '../ui/MiniMap'
 
 /** Things that last the whole run (achievements, stats), shown on the victory screen later. */
 export interface RunRecord {
@@ -81,6 +82,8 @@ export interface Stage {
   exit(): void
   /** What the buttons do right now, for the controller guide. */
   guide?(): ButtonGuide | null
+  /** What the goggles' mini map shows here (null: no map). */
+  mapArea?(): MapArea | null
   /** Let go of anything stage-specific the hands have (the map, the backpack). */
   emptyHands?(): void
   /** The crew went to `id`: go there your own way (washed overboard from the deck); false to use the default. */

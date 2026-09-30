@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import type { MapArea } from '../ui/MiniMap'
 import type { GameContext, Stage } from '../core/Stage'
 import type { Hand } from '../input/Hand'
 import { LooseItem } from '../interaction/LooseItem'
@@ -267,6 +268,11 @@ export class Level3Stage extends DiveLevel {
     scene.fog = this.looks[look].fog
     scene.background = this.looks[look].background
     audio.setEnvironment(above ? 'air' : 'water')
+  }
+
+  /** The map covers the open sea by the cliff and the grotto inside it. */
+  mapArea(): MapArea | null {
+    return { x: 0, z: 8, size: 100, top: SURFACE_Y - 0.25, name: this.level.name }
   }
 
   protected nextStage(): (() => Stage) | null {
