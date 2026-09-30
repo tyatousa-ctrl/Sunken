@@ -32,6 +32,8 @@ export class CrewRoom extends Room<{ state: CrewState }> {
   private readonly props = new Map<string, number[]>()
   /** The level the crew is on (set by whoever last moved on). */
   private crewStage = ''
+  /** Every level the crew has been in: the menu lets anyone go back to these (only the host goes further). */
+  private readonly reached = new Set<string>(['intro'])
   private clayId = 0
   private crackerId = 0
   private lastPull = 0
@@ -84,10 +86,11 @@ export class CrewRoom extends Room<{ state: CrewState }> {
       const stage = String(msg?.stage ?? '').slice(0, 16)
       if (!stage || !this.player(client) || stage === this.crewStage) return
       this.crewStage = stage
-      this.broadcast('crewStage', { stage, by: client.sessionId })
+      this.reached.add(stage)
+      this.broadcast('crewStage', { stage, by: client.sessionId, reached: [...this.reached] })
     })
     this.onMessage('whereIsCrew', (client) => {
-      if (this.crewStage) client.send('crewStage', { stage: this.crewStage })
+      client.send('crewStage', { stage: this.crewStage, reached: [...this.reached] })
     })
 
     // Bots run on the host's device (the connected human in the lowest slot); the server relays

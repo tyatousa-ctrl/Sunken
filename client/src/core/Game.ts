@@ -51,6 +51,8 @@ export class Game implements GameContext {
   stageFactory: ((id: string) => Stage) | null = null
   /** Where the crew is (the server's word): everyone goes where anyone moves on to. */
   private crewStage: string | null = null
+  /** Levels the crew has been in (the menu lets anyone go to these; the host can go anywhere). */
+  private reached = new Set<string>(['intro'])
   /** Tell the crew when the stage we're fading to is entered (off for following and for joining). */
   private announce = true
   readonly desktop: DesktopControls
@@ -190,7 +192,8 @@ export class Game implements GameContext {
       this.hud.now(msg.from ? `You and ${msg.from} swapped: you're the ${CLASS_NAMES[cls] ?? cls} now.` : `You're the ${CLASS_NAMES[cls] ?? cls} now.`, 4)
     })
     // One crew, one level: whoever moves on takes everyone with them.
-    net.on<{ stage: string; by?: string }>('crewStage', (msg) => {
+    net.on<{ stage: string; by?: string; reached?: string[] }>('crewStage', (msg) => {
+      if (Array.isArray(msg.reached)) this.reached = new Set(msg.reached)
       if (!msg.stage) return
       const moving = this.crewStage !== null && msg.stage !== this.crewStage && msg.stage !== this.stage?.id && msg.by && msg.by !== net.sessionId
       this.crewStage = msg.stage
@@ -287,8 +290,12 @@ export class Game implements GameContext {
     })
     const levels: [string, string][] = [['intro', 'Deck'], ['level1', 'Level 1'], ['level2', 'Level 2'], ['level3', 'Level 3'], ['level4', 'Level 4'], ['vault', 'Vault'], ['sandbox', 'Sandbox']]
     const keys = ['5', '6', '7', '8', '9', '0', '-']
+    // Levels the crew hasn't reached yet are locked for everyone but the host (the sandbox never is).
+    const host = this.isHost()
     levels.forEach(([id, label], i) => {
-      items.push({ row: i < 4 ? 2 : 3, key: keys[i], label, current: this.stage?.id === id, action: () => {
+      const locked = !host && id !== 'sandbox' && !this.reached.has(id) && this.stage?.id !== id
+      items.push({ row: i < 4 ? 2 : 3, key: keys[i], label: locked ? `🔒 ${label}` : label, sub: locked ? 'Locked' : undefined, current: this.stage?.id === id, action: () => {
+        if (locked) return void this.hud.now(`${label} is locked: it opens once the crew gets there (or the host takes you).`, 3)
         const make = this.stageFactory
         if (make) this.goTo(() => make(id))
       } })
@@ -297,10 +304,20 @@ export class Game implements GameContext {
     return {
       sections: [
         { row: 1, title: 'Your class' },
-        { row: 2, title: net ? 'Go to a level (the whole crew comes)' : 'Go to a level' },
+        { row: 2, title: net ? (host ? 'Go to a level (you\'re the host: the whole crew comes)' : 'Go to a level (later ones open as the crew reaches them)') : 'Go to a level' },
       ],
       items,
     }
+  }
+
+  /** Solo, or the crew's host (the connected player in the lowest slot). */
+  isHost(): boolean {
+    const net = this.net
+    if (!net) return true
+    const humans = net.roster().filter((p) => p.connected)
+    if (humans.length === 0) return true
+    const lowest = humans.reduce((a, b) => (b.slot < a.slot ? b : a))
+    return lowest.sessionId === net.sessionId
   }
 
   /** Crewmates and bots on the mini map (everyone in this stage but you). */
