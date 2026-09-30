@@ -20,7 +20,6 @@ import type { BotWorld } from '../bots/world'
 import type { CharacterClass } from '../systems/crew'
 import { CABIN_FRONT_Z, DECK_Y, Galleon, STERN_Z } from '../world/ship/Galleon'
 import { NET_OBSTACLES, Rigging, netObstacles, type RigSpec } from '../intro/Rigging'
-import { NestRope } from '../intro/NestRope'
 import { DeckCannons, MATCH_CRATE } from '../intro/DeckCannons'
 import { PERCH_SPOT, Quarterdeck, STAIRS } from '../intro/Quarterdeck'
 import { Sailing, type SailState } from '../intro/Sailing'
@@ -28,7 +27,8 @@ import { CrackerPack, Parrot, type PollyState } from '../intro/Parrot'
 import { Swords, type SwordTarget } from '../intro/Swords'
 import { LooseItem } from '../interaction/LooseItem'
 import { makeItem } from '../systems/items'
-import { DECK_ROUTE, POLLY_ROUTE, Zipline } from '../intro/Zipline'
+import { DECK_ROUTE, POLLY_ROUTE, Zipline, type ZiplineRoute } from '../intro/Zipline'
+import { TitanicBow } from '../intro/TitanicBow'
 import { Level1Stage } from './Level1Stage'
 import { deckHalfWidth, DECK_BOW_Z, FOREMAST_Z, STRETCH } from '../intro/deck'
 
@@ -67,6 +67,8 @@ const OBSTACLES: Obstacle[] = [
   { x: MATCH_CRATE.x, z: MATCH_CRATE.z, r: 0.35 },
   ...NET_OBSTACLES,
   ...netObstacles(FORE_RIG),
+  // Rose, at the tip of the bow.
+  { x: 0, z: DECK_BOW_Z + 0.95, r: 0.28 },
   // The high end of the stairs, from the side (you can't walk in under them).
   { x: (STAIRS.x0 + STAIRS.x1) / 2, z: STAIRS.zTop - 1.3, r: 0.4 },
   { x: (STAIRS.x0 + STAIRS.x1) / 2, z: STAIRS.zTop - 0.5, r: 0.4 },
@@ -85,11 +87,10 @@ export class IntroStage implements Stage {
   private readonly debris = new Particles({ max: 400, gravity: -9.8, drag: 0.3 })
   private readonly splash = new Particles({ max: 400, gravity: -9.8, drag: 0.4 })
   // The rigging net is a handhold: grip it to climb.
-  private readonly grab = new GrabSystem({ rocks: [], climb: (p) => (this.rigs?.some((r) => r.onNet(p, 0.12)) ?? false) || (this.nestRope?.near(p, 0.1) ?? false) })
+  private readonly grab = new GrabSystem({ rocks: [], climb: (p) => this.rigs?.some((r) => r.onNet(p, 0.12)) ?? false })
   /** The main mast's net and nest (aft of it); `rigs` also has the foremast's (forward of it). */
   private rigging!: Rigging
   private rigs!: Rigging[]
-  private nestRope!: NestRope
   private ziplines!: Zipline[]
   private cannons!: DeckCannons
   /** The prompt the rigging put up (so we only clear our own). */
@@ -106,6 +107,8 @@ export class IntroStage implements Stage {
   private range!: ClayRange
   private crew!: Crew
   private swords!: Swords
+  /** The bow: bowsprit, and Rose to fly with. */
+  private bow!: TitanicBow
   private swivelKey!: LooseItem
   /** Which hand (0 left, 1 right) each crewmate holds their sword in, by sword id. */
   private readonly swordHands = new Map<string, 0 | 1>()
@@ -174,13 +177,38 @@ export class IntroStage implements Stage {
     this.rigging = new Rigging(this.ship)
     const foreRig = new Rigging(this.ship, FORE_RIG)
     this.rigs = [this.rigging, foreRig]
-    // A rope from nest to nest, high over the deck.
-    this.nestRope = new NestRope(
-      this.ship,
-      new THREE.Vector3(0, this.rigging.nestFloorY + 1.15, -0.95),
-      new THREE.Vector3(0, foreRig.nestFloorY + 1.15, FOREMAST_Z + 0.8),
-    )
-    this.ziplines = [DECK_ROUTE, POLLY_ROUTE].map((route) => this.grab.add(new Zipline(this.ship, game.rig, game.player, game.audio, route)))
+    this.bow = new TitanicBow(this.ship, game.audio)
+    // Ziplines: from the main nest down to the deck and to Polly, overhead from nest to nest, and from
+    // the front nest down to the bow. Every one goes both ways; the nest ends land you in the nest.
+    const mainFloor = this.rigging.nestFloorY
+    const foreFloor = foreRig.nestFloorY
+    const intoNest = (rig: Rigging) => () => {
+      game.player.placeFeet(rig.nestSpot(this.v2))
+      game.audio.play('thud', this.v2, 0.4)
+    }
+    const MAST_ROUTE: ZiplineRoute = {
+      top: new THREE.Vector3(0, mainFloor + 2.0, -0.95),
+      stop: new THREE.Vector3(0, foreFloor + 2.0, FOREMAST_Z + 0.8),
+      mastTie: new THREE.Vector3(0, mainFloor + 2.6, -0.12),
+      railTie: new THREE.Vector3(0, foreFloor + 2.6, FOREMAST_Z + 0.12),
+      to: 'the front crow\'s nest',
+      from: 'the main crow\'s nest',
+    }
+    const BOW_ROUTE: ZiplineRoute = {
+      top: new THREE.Vector3(0.45, foreFloor + 1.85, FOREMAST_Z - 0.6),
+      stop: new THREE.Vector3(0, DECK_Y + 2.1, DECK_BOW_Z + 5),
+      mastTie: new THREE.Vector3(0.1, foreFloor + 2.4, FOREMAST_Z - 0.1),
+      railTie: this.bow.ropeTie.clone(),
+      to: 'the bow',
+      from: 'the front crow\'s nest',
+    }
+    const toMain = { top: intoNest(this.rigging) }
+    this.ziplines = [
+      new Zipline(this.ship, game.rig, game.player, game.audio, DECK_ROUTE, toMain, game.camera),
+      new Zipline(this.ship, game.rig, game.player, game.audio, POLLY_ROUTE, toMain, game.camera),
+      new Zipline(this.ship, game.rig, game.player, game.audio, MAST_ROUTE, { top: intoNest(this.rigging), stop: intoNest(foreRig) }, game.camera),
+      new Zipline(this.ship, game.rig, game.player, game.audio, BOW_ROUTE, { top: intoNest(foreRig) }, game.camera),
+    ].map((z) => this.grab.add(z))
     this.cannons = new DeckCannons(this.root, this.ship, this.grab, {
       audio: game.audio,
       smoke: this.smoke,
@@ -294,6 +322,7 @@ export class IntroStage implements Stage {
 
     this.syncNet(dt)
     this.swords.update(dt, game.halfHeight)
+    if (this.phase !== 'overboard') this.bow.update(dt, game.camera.getWorldPosition(this.v), game.hands, game.camera, () => this.kingOfTheWorld(null))
     this.swords.face(game.camera)
     for (const z of this.ziplines) z.face(game.camera)
     if (this.phase === 'fakeout') this.updateFakeout(dt)
@@ -360,6 +389,16 @@ export class IntroStage implements Stage {
     this.game.chooseClass(cls)
   }
 
+  /** Flying at the bow with Rose: you (`who` null) or a crewmate shouts it, and Rose answers. */
+  private kingOfTheWorld(who: string | null): void {
+    const { game } = this
+    game.hud.now(who ? `${who}: "I'M THE KING OF THE WORLD!"` : '"I\'M THE KING OF THE WORLD!"', 4)
+    speak("I'm the king of the world!", { pitch: 0.95, rate: 1.05, volume: who ? 0.6 : 1 })
+    setTimeout(() => speak("I'm flying, Jack!", { pitch: 1.45, rate: 1, volume: 0.8 }), 1900)
+    setTimeout(() => game.hud.now('Rose: "I\'m flying, Jack!"', 3), 1900)
+    if (!who && game.net) game.net.send('prop', { key: 'intro/king', v: [game.net.serverNow()] })
+  }
+
   /** The crew dived: whoever's still on deck goes over the side with their gear on. */
   followCrew(id: string): boolean {
     if (id !== 'level1') return false
@@ -419,6 +458,12 @@ export class IntroStage implements Stage {
     on<{ key: string; v: number[]; by?: string }>('prop', (msg) => {
       const sw = switches[msg.key as keyof typeof switches]
       if (sw) sw.show(msg.v[0] === 1 ? 1 : 0)
+      // A crewmate flew with Rose (recently: the prop cache replays old ones to late joiners).
+      if (msg.key === 'intro/king' && net.serverNow() - msg.v[0] < 5000) {
+        const who = net.roster().find((p) => p.sessionId === msg.by)?.name ?? 'Someone'
+        this.bow.fly()
+        this.kingOfTheWorld(who)
+      }
       // Someone unlocked the swivel gun (or had, before we joined).
       if (msg.key === 'intro/swivelUnlocked' && this.cannons.swivel.locked) {
         this.cannons.swivel.unlock(!msg.by)
@@ -766,11 +811,10 @@ export class IntroStage implements Stage {
       return
     }
     const head = game.camera.getWorldPosition(this.v)
-    // Whichever nest you're in, or at the top of the net to, or hanging off the rope beside.
-    const onRope = player.climbing && this.nestRope.near(head, 1.4)
-    const rig = this.rigs.find((r) => r.inNest(head)) ?? this.rigs.find((r) => player.climbing && (r.nearTop(head) || (onRope && r.besideNest(head)))) ?? this.rigging
+    // Whichever nest you're in, or at the top of the net to.
+    const rig = this.rigs.find((r) => r.inNest(head)) ?? this.rigs.find((r) => player.climbing && r.nearTop(head)) ?? this.rigging
     const inNest = rig.inNest(head)
-    const atTop = !inNest && player.climbing && (rig.nearTop(head) || (onRope && rig.besideNest(head)))
+    const atTop = !inNest && player.climbing && rig.nearTop(head)
     player.noJump = inNest || atTop
     const key = game.inXr ? 'A/X' : 'R'
     const prompt = atTop ? `${key}: climb into the crow's nest` : inNest ? `${key}: climb back out onto the net` : ''
@@ -983,9 +1027,9 @@ export class IntroStage implements Stage {
       kind: 'walk',
       waterY: 0,
       // Hanging on a net, or dangling from the rope between the nests.
-      climbable: (p, reach) => this.rigs.some((r) => r.onNet(p, reach)) || this.nestRope.near(p, reach + 0.6),
+      climbable: (p, reach) => this.rigs.some((r) => r.onNet(p, reach)),
       climbUp: (target) => this.nearestRig(this.game.camera.getWorldPosition(new THREE.Vector3())).upTheNet(target),
-      climbHold: (head, target) => (this.nestRope.near(head, 1.4) && !this.rigs.some((r) => r.onNet(head, 0.8)) ? target.set(0, 0, 0) : this.nearestRig(head).holdOffset(head, target)),
+      climbHold: (head, target) => this.nearestRig(head).holdOffset(head, target),
       groundHeight: (x, z, below) => {
         if (below !== undefined) {
           for (const r of this.rigs ?? []) {
@@ -1027,7 +1071,8 @@ export class IntroStage implements Stage {
           // Over the side is allowed, but not through the cabin wall.
           if (p.z > cabinFront && Math.abs(p.x) < deckHalfWidth(STERN_Z)) p.z = cabinFront
         } else {
-          p.z = THREE.MathUtils.clamp(p.z, DECK_BOW_Z + 2.2, cabinFront)
+          // Right up into the bow's point, to stand behind Rose.
+          p.z = THREE.MathUtils.clamp(p.z, DECK_BOW_Z + 1.35, cabinFront)
           const half = deckHalfWidth(p.z) - RAIL_MARGIN
           p.x = THREE.MathUtils.clamp(p.x, -half, half)
         }
@@ -1048,3 +1093,13 @@ export class IntroStage implements Stage {
   }
 }
 
+/** Say it out loud (the browser's speech voice), if it has one. */
+function speak(text: string, o: { pitch: number; rate: number; volume: number }): void {
+  const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined
+  if (!synth || typeof SpeechSynthesisUtterance === 'undefined') return
+  const line = new SpeechSynthesisUtterance(text)
+  line.pitch = o.pitch
+  line.rate = o.rate
+  line.volume = o.volume
+  synth.speak(line)
+}

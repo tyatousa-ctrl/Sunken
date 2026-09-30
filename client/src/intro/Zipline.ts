@@ -17,8 +17,10 @@ export interface ZiplineRoute {
   stop: THREE.Vector3
   mastTie: THREE.Vector3
   railTie: THREE.Vector3
-  /** Where you land: said on the sign in the nest. */
+  /** Where the slide down lands you: said on the sign at the top. */
   to: string
+  /** Where zipping up it takes you: said on the sign at the bottom. */
+  from: string
 }
 
 const LAND_Z = 5.2
@@ -29,6 +31,7 @@ export const DECK_ROUTE: ZiplineRoute = {
   mastTie: new THREE.Vector3(0.12, NEST_FLOOR_Y + 2.5, 0.12),
   railTie: new THREE.Vector3(deckHalfWidth(LAND_Z + 0.4) - 0.08, DECK_Y + 1.0, LAND_Z + 0.4),
   to: 'the main deck',
+  from: 'the crow\'s nest',
 }
 /** From the main nest aft to the quarterdeck, where Polly perches (a gentler run). */
 export const POLLY_ROUTE: ZiplineRoute = {
@@ -37,22 +40,34 @@ export const POLLY_ROUTE: ZiplineRoute = {
   mastTie: new THREE.Vector3(-0.12, NEST_FLOOR_Y + 2.5, 0.12),
   railTie: new THREE.Vector3(-0.6, ROOF_Y + 1.0, 12.95),
   to: 'the quarterdeck, by Polly',
+  from: 'the crow\'s nest',
 }
-/** Sliding speed (m/s) with one hand on the rope, and braking with both. */
+/** Sliding speed (m/s) with one hand on the rope, and braking with both; zipping up is slower. */
 const SPEED = 4
 const BRAKED_SPEED = 2
+const UP_SPEED = 2.6
 const ACCELERATION = 5
 /** Grip within this of the rope to take hold. */
 const GRAB_REACH = 0.08
 
-// The zipline: a rope from the crow's nest down to the main deck. Grip it and hold on: you slide
-// down, the rope whirring through your hand. Grip it with your other hand too to brake. Let go on
-// the way and you drop; at the bottom a knot stops you and you drop the last metre to the deck.
+/** What happens at each end of a ride (landing in a crow's nest); without one, you drop off. */
+export interface ZiplineEnds {
+  top?: () => void
+  stop?: () => void
+}
+
+// A zipline: a rope from a crow's nest down to the deck (or across to the other nest). Grip it and hold
+// on: you slide the way you're facing, down it or up it, the rope whirring through your hand. Push the
+// thumbstick back to change direction, grip with your other hand too to brake. Let go on the way and you
+// drop; at a knot you drop off, and at a nest you climb in.
 export class Zipline implements Interactable {
   readonly pullable = false
   private rider: Hand | null = null
   private brake: Hand | null = null
   private t = 0
+  /** +1: toward `stop` (usually down); -1: toward `top` (zipping up). */
+  private dir = 1
+  private flipCooldown = 0
   private speed = 0
   private buzz = 0
   private whirr = 0
@@ -60,6 +75,7 @@ export class Zipline implements Interactable {
   private readonly top = new THREE.Vector3()
   private readonly stop = new THREE.Vector3()
   private readonly sign = new Label({ width: 0.55, canvasWidth: 560, canvasHeight: 300, billboard: true })
+  private readonly bottomSign = new Label({ width: 0.5, canvasWidth: 560, canvasHeight: 300, billboard: true })
   private readonly v = new THREE.Vector3()
   private readonly v2 = new THREE.Vector3()
   private readonly line = new THREE.Line3()
@@ -70,6 +86,8 @@ export class Zipline implements Interactable {
     private readonly player: Player,
     private readonly audio: AudioSystem,
     private readonly route: ZiplineRoute = DECK_ROUTE,
+    private readonly landing: ZiplineEnds = {},
+    private readonly camera: THREE.Camera | null = null,
   ) {
     const { top: TOP, stop: STOP, mastTie: MAST_TIE, railTie: RAIL_TIE } = route
     const tar = new THREE.MeshStandardMaterial({ color: 0x7a5c38, roughness: 0.95 })
@@ -84,15 +102,13 @@ export class Zipline implements Interactable {
     ship.shake.add(knot, cleat)
 
     // A sign hanging by the top of the rope, in the nest.
-    this.sign.mesh.position.set(TOP.x * 0.5, NEST_FLOOR_Y + 1.55, TOP.z + 0.1)
+    this.sign.mesh.position.set(TOP.x * 0.5, TOP.y - 0.3, TOP.z + 0.1 * Math.sign(TOP.z || 1))
     ship.shake.add(this.sign.mesh)
-    this.sign.set([
-      { text: 'Zipline', size: 40, bold: true, color: '#f2b64a' },
-      { text: `to ${route.to}`, size: 26, color: '#ffe0a0' },
-      { text: 'Grip the rope and hold on to slide down', size: 26 },
-      { text: 'Grip with both hands to slow down', size: 26 },
-      { text: 'Let go and you drop!', size: 22, color: '#b9c7cf' },
-    ])
+    this.sign.set(signLines(route.to))
+    // And one at the bottom end, for zipping up.
+    this.bottomSign.mesh.position.copy(STOP).add(new THREE.Vector3(0, -0.45, 0))
+    ship.shake.add(this.bottomSign.mesh)
+    this.bottomSign.set(signLines(route.from))
   }
 
   get riding(): boolean {
@@ -102,6 +118,7 @@ export class Zipline implements Interactable {
   /** Keep the sign facing you. */
   face(camera: THREE.Camera): void {
     this.sign.face(camera)
+    this.bottomSign.face(camera)
   }
 
   grabGap(point: THREE.Vector3, hand: Hand): number {
@@ -119,14 +136,23 @@ export class Zipline implements Interactable {
     }
     this.ends()
     this.t = this.line.closestPointToPointParameter(hand.worldPos(this.v), true)
-    // Already at the bottom knot: nothing to slide down.
-    if (this.t > 0.97) {
-      hand.held = null
-      return
-    }
+    // Go the way you're facing along the rope (at either end, the only way there is).
+    this.dir = this.facingDir()
+    if (this.t > 0.97) this.dir = -1
+    else if (this.t < 0.03) this.dir = 1
     this.rider = hand
     this.speed = 0
     this.player.riding = true
+  }
+
+  /** +1 if you face toward the `stop` end, -1 if toward the `top` (downhill when unsure). */
+  private facingDir(): number {
+    if (!this.camera) return 1
+    const along = this.v2.subVectors(this.line.end, this.line.start).setY(0)
+    const facing = this.camera.getWorldDirection(this.v).setY(0)
+    if (along.lengthSq() < 1e-6 || facing.lengthSq() < 1e-6) return 1
+    const dot = along.normalize().dot(facing.normalize())
+    return Math.abs(dot) < 0.2 ? 1 : Math.sign(dot)
   }
 
   release(hand: Hand): void {
@@ -160,9 +186,18 @@ export class Zipline implements Interactable {
     if (!hand) return
     this.ends()
     const length = this.line.distance()
-    const target = this.brake ? BRAKED_SPEED : SPEED
+    // Thumbstick back (on the gripping hand): the other way.
+    this.flipCooldown = Math.max(0, this.flipCooldown - dt)
+    if (this.flipCooldown === 0 && hand.stick.y > 0.7) {
+      this.dir = -this.dir
+      this.speed = 0
+      this.flipCooldown = 0.8
+      hand.pulse(0.4, 40)
+    }
+    const up = (this.line.end.y - this.line.start.y) * this.dir > 0.2
+    const target = this.brake ? BRAKED_SPEED : up ? UP_SPEED : SPEED
     this.speed += THREE.MathUtils.clamp(target - this.speed, -ACCELERATION * 2 * dt, ACCELERATION * dt)
-    this.t = Math.min(1, this.t + (this.speed * dt) / length)
+    this.t = THREE.MathUtils.clamp(this.t + (this.dir * this.speed * dt) / length, 0, 1)
     // Carry the body so the gripping hand stays on the rope.
     this.line.at(this.t, this.v)
     this.rig.position.add(this.v.sub(hand.worldPos(this.v2)))
@@ -182,11 +217,14 @@ export class Zipline implements Interactable {
       this.audio.play('zip', hand.worldPos(this.v2), 0.4 + 0.4 * (this.speed / SPEED))
     }
 
-    if (this.t >= 1) {
-      // Bumped into the knot: let go and drop to the deck.
+    const arrived = this.dir > 0 ? this.t >= 1 : this.t <= 0
+    if (arrived) {
+      // Bumped into the knot: let go and drop to the deck, or climb into the nest at that end.
       hand.pulse(0.9, 90)
       this.audio.play('thud', hand.worldPos(this.v2), 0.6)
+      const land = this.dir > 0 ? this.landing.stop : this.landing.top
       this.forceRelease()
+      land?.()
     }
   }
 
@@ -202,6 +240,16 @@ export class Zipline implements Interactable {
     this.ship.shake.updateWorldMatrix(true, false)
     this.line.set(this.ship.shake.localToWorld(this.top.copy(this.route.top)), this.ship.shake.localToWorld(this.stop.copy(this.route.stop)))
   }
+}
+
+function signLines(to: string): { text: string; size: number; bold?: boolean; color?: string }[] {
+  return [
+    { text: 'Zipline', size: 40, bold: true, color: '#f2b64a' },
+    { text: `to ${to}`, size: 26, color: '#ffe0a0' },
+    { text: 'Grip the rope, face the way to go', size: 26 },
+    { text: 'Both hands: slow down · Stick back: turn round', size: 22 },
+    { text: 'Let go and you drop!', size: 22, color: '#b9c7cf' },
+  ]
 }
 
 function ropeBetween(a: THREE.Vector3, b: THREE.Vector3, radius: number, material: THREE.Material): THREE.Mesh {

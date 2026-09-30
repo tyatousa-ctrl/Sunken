@@ -367,6 +367,13 @@ Fixed:
 - **Mini map (top right of the mask).** The level seen from above: drawn from the level itself when you arrive (and again every 20 s, so opened doors and moved boulders show), with a dot in each crewmate's and bot's colour and a gold arrow for you, pointing the way you face. North is up; anyone off the edge shows at the rim. The level's name is under it. Each stage says what the map covers: the deck bow to stern, the whole roaming area of each dive level, the sea by the cliff and the grotto in Level 3, the treasure room in the vault.
 - **Air (top left of the mask).** The air gauge and depth moved from low-left to the top-left corner, a little bigger. Both sit well inside the mask's rim, tilted toward your eye.
 
+## Ziplines both ways, mast to mast, and the bow
+
+- **Every zipline goes both ways.** Grip the rope and you slide the way you're facing, down it or up it (zipping up is a little slower). Push the thumbstick back on the gripping hand to turn round mid-ride; grip with both hands to brake. At a nest end you climb straight into the nest; at a deck end you drop off. Signs at both ends.
+- **Mast to mast.** The rope between the two crow's nests is now a zipline, strung overhead (2 m above the nest floors, so you hang from it) instead of at waist height. Ride it either way; you land in the other nest.
+- **Front nest to the bow.** A new zipline from the front crow's nest down to the bow deck (and back up).
+- **The bow.** A bowsprit reaches out ahead of the ship, and you can walk right up into the bow's point. **Rose** stands at the tip in a plum dress and cream shawl, arms out over the sea. Stand behind her and spread your arms wide: a gust of wind, a rumble in both hands, "I'm the king of the world!" (spoken, where the browser has a voice) and Rose answers "I'm flying, Jack!". The crew sees and hears it too.
+
 ## Decisions
 
 - **2026-09-29 — Hosting.** Macaly apps are static exports (TanStack Start + Convex) with no Node process, so they can't run the Colyseus WebSocket server. The game client and game server are hosted together on **Render** as one Node web service (same origin, one deploy). Render's free tier sleeps when idle, so the first load after a quiet period can take up to about a minute; upgrading the plan removes that.
